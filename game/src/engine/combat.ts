@@ -182,13 +182,20 @@ export function createEncounter(opts: {
   tags?: string[];
 }): CombatState {
   const combatants = [...opts.allies, ...opts.enemies];
-  const turnOrder = [...combatants]
-    .sort(
-      (a, b) =>
-        b.attributes.agility + modifier(b.attributes.agility) -
-        (a.attributes.agility + modifier(a.attributes.agility)),
-    )
+  const bySpeed = (a: Combatant, b: Combatant) =>
+    b.attributes.agility +
+    modifier(b.attributes.agility) -
+    (a.attributes.agility + modifier(a.attributes.agility));
+
+  // Player always leads the round so the fight is never stuck on "(waiting)".
+  // Companions and enemies still sort by speed within their groups.
+  const player = combatants.filter((c) => c.isPlayer).sort(bySpeed).map((c) => c.id);
+  const companions = combatants.filter((c) => c.isCompanion).sort(bySpeed).map((c) => c.id);
+  const enemies = combatants
+    .filter((c) => !c.isPlayer && !c.isCompanion)
+    .sort(bySpeed)
     .map((c) => c.id);
+  const turnOrder = [...player, ...companions, ...enemies];
 
   return {
     id: opts.id,
@@ -198,7 +205,12 @@ export function createEncounter(opts: {
     turnOrder,
     activeIndex: 0,
     round: 1,
-    log: [{ text: `${opts.name} begins. ${opts.description}`, kind: 'system' }],
+    log: [
+      {
+        text: `${opts.name} begins. Your move — pick a target, spend Energy, or Scan Power.`,
+        kind: 'system',
+      },
+    ],
     objective: opts.objective,
     riftActive: opts.riftActive ?? false,
     finished: false,
@@ -265,7 +277,8 @@ export function useTechnique(
   }
   if (!actor.alive || next.finished) return next;
   if (actor.flux < tech.fluxCost) {
-    pushLog(next, `${actor.name} lacks Flux for ${tech.name}.`, 'system');
+    pushLog(next, `${actor.name} is out of Energy for ${tech.name}.`, 'system');
+    if (!actor.isPlayer) endTurn(next);
     return next;
   }
 
@@ -495,7 +508,7 @@ export function scanResonance(
   next.tags.push(`res:${target.id}:${reading.displayed}`);
   pushLog(
     next,
-    `SCAN → ${target.name}: RES ${formatResonance(reading.displayed)} · ${reading.bandLabel} · Output ${outputLabel(target.output)} (${Math.round(target.output * 100)}%). ${powerGapFlavor(actor.powerBand, target.powerBand)}`,
+    `SCAN → ${target.name}: Power ${formatResonance(reading.displayed)} · ${reading.bandLabel} class · ${outputLabel(target.output)} (${Math.round(target.output * 100)}%). ${powerGapFlavor(actor.powerBand, target.powerBand)}`,
     'system',
   );
   if (actor.attributes.intellect >= 13) {
@@ -543,7 +556,7 @@ export function activateAscension(
   const surge = combatantResonance(actor);
   pushLog(
     next,
-    `RESONANCE SURGE → ${formatResonance(surge.displayed)} (${surge.bandLabel})`,
+    `POWER SURGE → ${formatResonance(surge.displayed)} (${surge.bandLabel} class)`,
     'ascend',
   );
 
@@ -697,7 +710,20 @@ export function aiChooseTechnique(state: CombatState, actor: Combatant): { techI
 export function runEnemyTurns(state: CombatState): CombatState {
   let next = state;
   let guard = 0;
-  while (!next.finished && guard < 12) {
+  while (!next.finished && guard < 24) {
+    if (next.pendingClash) {
+      const clash = next.pendingClash;
+      const atk = get(next, clash.attackerId);
+      const def = get(next, clash.defenderId);
+      // Player must choose Clash options in the UI
+      if (atk.isPlayer || def.isPlayer) break;
+      while (next.pendingClash) {
+        next = resolveClashBeat(next, 'push', 'overcharge');
+      }
+      guard++;
+      continue;
+    }
+
     const actor = activeCombatant(next);
     if (actor.isPlayer) break;
     if (!actor.alive) {
@@ -705,20 +731,21 @@ export function runEnemyTurns(state: CombatState): CombatState {
       guard++;
       continue;
     }
+
+    const beforeIndex = next.activeIndex;
+    const beforeRound = next.round;
     const choice = aiChooseTechnique(next, actor);
     next = useTechnique(next, actor.id, choice.techId, choice.targetId);
-    if (next.pendingClash) {
-      // AI auto-resolves clash beats against player later via UI; if both AI, auto
-      const clash = next.pendingClash;
-      const atk = get(next, clash.attackerId);
-      const def = get(next, clash.defenderId);
-      if (!atk.isPlayer && !def.isPlayer) {
-        while (next.pendingClash) {
-          next = resolveClashBeat(next, 'push', 'overcharge');
-        }
-      } else {
-        break;
-      }
+
+    // Soft-lock guard: if an AI action failed without advancing the turn, skip them
+    if (
+      !next.finished &&
+      !next.pendingClash &&
+      next.activeIndex === beforeIndex &&
+      next.round === beforeRound
+    ) {
+      pushLog(next, `${actor.name} hesitates and loses the beat.`, 'system');
+      endTurn(next);
     }
     guard++;
   }

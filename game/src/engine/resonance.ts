@@ -145,20 +145,20 @@ export function formatResonance(n: number): string {
 
 export function powerGapFlavor(attackerBand: PowerBand, defenderBand: PowerBand): string {
   const gap = bandGap(defenderBand, attackerBand);
-  if (gap >= 3) return 'Power gap extreme — ordinary strikes cannot land. Change the board.';
-  if (gap === 2) return 'Heavy disadvantage — need setup, artifact, or exposed weakness.';
-  if (gap === 1) return 'Outclassed — contests at disadvantage unless you spike output.';
-  if (gap === 0) return 'Same band — full combat rules.';
-  if (gap === -1) return 'You outclass them — pressure is yours to spend.';
-  return 'Overwhelming advantage — hold back, or rewrite the fight.';
+  if (gap >= 3) return 'They are far above your class — normal hits will not hurt them. Find another way.';
+  if (gap === 2) return 'Bad matchup — you need a weakness, setup, or all-out transform.';
+  if (gap === 1) return 'They are stronger — power up or scan for an opening.';
+  if (gap === 0) return 'Even match — fight on equal footing.';
+  if (gap === -1) return 'You are stronger — keep the pressure on.';
+  return 'Huge advantage — finish it, or hold back.';
 }
 
 export function outputLabel(output: number): string {
-  if (output <= 0.25) return 'Suppressed';
-  if (output <= 0.45) return 'Held';
-  if (output <= 0.65) return 'Released';
-  if (output <= 0.85) return 'Surging';
-  return 'Wide Open';
+  if (output <= 0.25) return 'Hidden';
+  if (output <= 0.45) return 'Held back';
+  if (output <= 0.65) return 'Normal';
+  if (output <= 0.85) return 'Pushing hard';
+  return 'All-out';
 }
 
 export function attributeBars(attrs: Attributes): { id: keyof Attributes; label: string; value: number; mod: number }[] {

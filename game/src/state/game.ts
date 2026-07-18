@@ -3,7 +3,6 @@ import {
   playerDerived,
 } from '../engine/attributes';
 import { isSuccess, makeCheck } from '../engine/dice';
-import type { CombatState } from '../engine/combat';
 import type {
   ConvictionId,
   EndingId,
@@ -24,6 +23,7 @@ import { buildEncounter } from '../data/encounters';
 import { ENDINGS, SCENES, type ChoiceEffect, type StoryChoice } from '../data/story';
 import {
   activateAscension,
+  activeCombatant,
   attemptConvince,
   powerUp,
   resolveClashBeat,
@@ -31,6 +31,7 @@ import {
   scanResonance,
   suppressOutput,
   useTechnique,
+  type CombatState,
 } from '../engine/combat';
 
 const SAVE_KEY = 'riftwake.save.v1';
@@ -327,14 +328,17 @@ export function startCombatFrom(
   if (state.save.flags['Ascension.TemperedWake']) {
     c = activateAscension(c, 'player', 'tempered_wake', true);
   }
-  // If enemy starts, run AI until player
+  // Advance any non-player turns (companions / stragglers) until you can act
   c = runEnemyTurns(c);
   return {
     ...state,
-    screen: 'combat',
+    screen: c.pendingClash ? 'clash' : 'combat',
     combat: c,
     returnSceneId,
     save: { ...state.save, player },
+    toast: c.pendingClash
+      ? 'Power clash! Choose how you meet their attack.'
+      : 'Your turn — attack, power up, or scan their rating.',
   };
 }
 
@@ -493,8 +497,23 @@ export function reduce(state: AppState, action: Action): AppState {
       if (!state.combat) return state;
       let combat = scanResonance(state.combat, 'player', action.targetId);
       if (!combat.finished) combat = runEnemyTurns(combat);
+      if (combat.pendingClash) return { ...state, combat, screen: 'clash' };
       if (combat.finished) return finishCombat({ ...state, combat });
       return { ...state, combat };
+    }
+    case 'COMBAT_CONTINUE': {
+      if (!state.combat) return state;
+      let combat = runEnemyTurns(state.combat);
+      if (combat.pendingClash) return { ...state, combat, screen: 'clash', toast: null };
+      if (combat.finished) return finishCombat({ ...state, combat });
+      return {
+        ...state,
+        combat,
+        screen: 'combat',
+        toast: activeIsPlayer(combat)
+          ? 'Your turn.'
+          : 'Still resolving other fighters… tap Continue again.',
+      };
     }
     case 'CLASH_CHOICE': {
       if (!state.combat) return state;
@@ -588,11 +607,20 @@ export type Action =
   | { type: 'COMBAT_POWER_UP' }
   | { type: 'COMBAT_SUPPRESS' }
   | { type: 'COMBAT_SCAN'; targetId: string }
+  | { type: 'COMBAT_CONTINUE' }
   | { type: 'CLASH_CHOICE'; choice: string }
   | { type: 'OPEN_SHEET' }
   | { type: 'CLOSE_SHEET' }
   | { type: 'DELETE_SAVE' }
   | { type: 'CLEAR_TOAST' };
+
+function activeIsPlayer(combat: CombatState): boolean {
+  try {
+    return activeCombatant(combat).isPlayer;
+  } catch {
+    return false;
+  }
+}
 
 export {
   ORIGINS,

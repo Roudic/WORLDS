@@ -1023,3 +1023,30 @@ button:disabled {
   font-family: var(--font-display);
   color: var(--accent);
 }
+
+.turn-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin: 0.35rem 0 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+.turn-banner.ready {
+  border-color: rgba(110, 231, 197, 0.5);
+  background: rgba(110, 231, 197, 0.1);
+}
+
+.turn-banner.wait {
+  border-color: rgba(240, 163, 94, 0.45);
+  background: rgba(240, 163, 94, 0.1);
+}
+
+.turn-banner span {
+  color: var(--muted);
+  flex: 1;
+  min-width: 12rem;
+}

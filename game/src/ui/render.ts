@@ -139,6 +139,9 @@ function handleClick(
     case 'scan':
       if (payload) dispatch({ type: 'COMBAT_SCAN', targetId: payload });
       break;
+    case 'continue-turn':
+      dispatch({ type: 'COMBAT_CONTINUE' });
+      break;
     case 'clash':
       if (payload) dispatch({ type: 'CLASH_CHOICE', choice: payload });
       break;
@@ -156,8 +159,8 @@ function shell(content: string, state: AppState, opts?: { showNav?: boolean }) {
       ? `<div class="topbar">
           <div class="brand">Project <span>Riftwake</span></div>
           <div class="actions">
-            <span class="meta">Ch.${save.chapter} · ${escapeHtml(save.player.name)} · RES <strong>${navRes}</strong> · Resolve ${save.player.resolve}</span>
-            <button data-action="open-sheet">Power Sheet</button>
+            <span class="meta">Ch.${save.chapter} · ${escapeHtml(save.player.name)} · Power <strong>${navRes}</strong> · Resolve ${save.player.resolve}</span>
+            <button data-action="open-sheet">Stats</button>
           </div>
         </div>`
       : '';
@@ -340,11 +343,11 @@ function renderCombat(state: AppState): string {
       const aura = c.ascended || c.output >= 0.9 || c.statuses.includes('aura') ? ' aura' : '';
       const surge = c.output >= 0.85 ? ' surge' : '';
       return `<div class="combatant${aura}${surge} ${c.id === active.id ? 'active' : ''} ${c.alive ? '' : 'down'}">
-        <div class="name"><span>${escapeHtml(c.name)}${c.ascended ? ' ✦ ASCENDED' : ''}</span><span class="band-chip">${escapeHtml(res.bandLabel)}</span></div>
+        <div class="name"><span>${escapeHtml(c.name)}${c.ascended ? ' · TRANSFORMED' : ''}</span><span class="band-chip">${escapeHtml(res.bandLabel)}</span></div>
         <div class="res-readout ${scanned ? 'known' : 'masked'}">
-          <span class="res-label">RES</span>
+          <span class="res-label">POWER</span>
           <strong class="res-num">${scanned ? formatResonance(res.displayed) : '????'}</strong>
-          <span class="muted">${scanned ? `${outputLabel(c.output)} ${Math.round(c.output * 100)}%` : 'unscanned'}</span>
+          <span class="muted">${scanned ? `${outputLabel(c.output)} ${Math.round(c.output * 100)}%` : 'not scanned'}</span>
         </div>
         <div class="bars">
           <div class="bar hp"><i style="width:${hp}%"></i></div>
@@ -353,11 +356,11 @@ function renderCombat(state: AppState): string {
           <div class="bar output"><i style="width:${Math.round(c.output * 100)}%"></i></div>
         </div>
         <div class="statline">
-          <span>VIT ${c.vitality}/${c.maxVitality}</span>
-          <span>FLUX ${c.flux}/${c.maxFlux}</span>
-          <span>STG ${c.stagger}/${c.maxStagger}</span>
-          <span>PRS ${c.pressure}</span>
-          <span>Guard ${c.guard}</span>
+          <span>Health ${c.vitality}/${c.maxVitality}</span>
+          <span>Energy ${c.flux}/${c.maxFlux}</span>
+          <span>Stun ${c.stagger}/${c.maxStagger}</span>
+          <span>Stress ${c.pressure}</span>
+          <span>Defense ${c.guard}</span>
         </div>
       </div>`;
     })
@@ -379,7 +382,7 @@ function renderCombat(state: AppState): string {
     .map((t) => {
       const disabled = !canAct || player.flux < t.fluxCost;
       return `<button ${disabled ? 'disabled' : ''} data-action="combat-tech" data-payload="${t.id}|${selectedTarget}">
-        <strong>${escapeHtml(t.name)}</strong> <span class="muted">(${t.fluxCost} Flux)</span>
+        <strong>${escapeHtml(t.name)}</strong> <span class="muted">(${t.fluxCost} Energy)</span>
         <span class="hint">${escapeHtml(t.description)}</span>
       </button>`;
     })
@@ -401,7 +404,7 @@ function renderCombat(state: AppState): string {
     (state.save.player.catalystReady ||
       state.save.flags['Catalyst.TemperedWake'] ||
       player.pressure >= 6)
-      ? `<button class="primary" data-action="ascend">Ascension · Tempered Wake</button>`
+      ? `<button class="primary" data-action="ascend">Transform · Tempered Wake</button>`
       : '';
 
   const backdrop = artForCombat(combat.id);
@@ -409,6 +412,11 @@ function renderCombat(state: AppState): string {
   const playerRes = combatantResonance(player);
   const foe = combat.combatants.find((c) => c.id === selectedTarget);
   const gapText = foe ? powerGapFlavor(player.powerBand, foe.powerBand) : '';
+  const whoseTurn = active.isPlayer
+    ? 'Your turn'
+    : active.isCompanion
+      ? `${active.name} (ally) is acting`
+      : `${active.name}'s turn`;
 
   return shell(
     `<div class="combat-stage${ascendedClass}" style="--combat-art:url('${backdrop}')">
@@ -419,11 +427,20 @@ function renderCombat(state: AppState): string {
           <h2>${escapeHtml(combat.name)}</h2>
           <span class="meta">Round ${combat.round} · ${escapeHtml(combat.objective.label)}</span>
         </div>
+        <div class="turn-banner ${canAct ? 'ready' : 'wait'}">
+          <strong>${escapeHtml(whoseTurn)}</strong>
+          ${
+            canAct
+              ? '<span>Choose a target, then use a move below.</span>'
+              : '<span>Allies/enemies are resolving — hit Continue if buttons stay locked.</span>'
+          }
+          ${canAct ? '' : '<button class="primary" data-action="continue-turn">Continue</button>'}
+        </div>
         <div class="scanner-bar">
           <div>
-            <span class="res-label">YOUR RESONANCE</span>
+            <span class="res-label">YOUR POWER READING</span>
             <div class="res-hero">${formatResonance(playerRes.displayed)}</div>
-            <div class="muted">${playerRes.bandLabel} · ${outputLabel(player.output)} ${Math.round(player.output * 100)}% · ${BAND_SCOPE[player.powerBand]}</div>
+            <div class="muted">${playerRes.bandLabel} class · Output ${outputLabel(player.output)} ${Math.round(player.output * 100)}% · ${BAND_SCOPE[player.powerBand]}</div>
           </div>
           <div class="band-track">${bandTrack(player.powerBand)
             .map(
@@ -438,19 +455,20 @@ function renderCombat(state: AppState): string {
             ${list}
             <h3>Target</h3>
             <div class="target-row">${targets}</div>
-            <h3>Energy & Scan ${canAct ? '' : '<span class="muted">(waiting)</span>'}</h3>
+            <h3>Combat Actions</h3>
             <div class="actions power-actions">
-              <button ${canAct ? '' : 'disabled'} data-action="power-up">Power Up (+Output)</button>
-              <button ${canAct ? '' : 'disabled'} data-action="suppress">Suppress</button>
-              <button ${canAct && selectedTarget ? '' : 'disabled'} data-action="scan" data-payload="${selectedTarget}">Scan Resonance</button>
+              <button ${canAct ? '' : 'disabled'} data-action="power-up">Power Up</button>
+              <button ${canAct ? '' : 'disabled'} data-action="suppress">Hold Back</button>
+              <button ${canAct && selectedTarget ? '' : 'disabled'} data-action="scan" data-payload="${selectedTarget}">Scan Power</button>
               ${ascendBtn}
-              ${talkOk && canAct && talkTarget ? `<button data-action="combat-talk" data-payload="${talkTarget}">Combat Conversation</button>` : ''}
+              ${talkOk && canAct && talkTarget ? `<button data-action="combat-talk" data-payload="${talkTarget}">Talk Them Down</button>` : ''}
+              ${canAct ? '' : '<button data-action="continue-turn">Continue</button>'}
             </div>
-            <h3>Techniques</h3>
+            <h3>Moves ${canAct ? '' : '<span class="muted">(locked until your turn)</span>'}</h3>
             <div class="tech-grid">${techs}</div>
           </div>
           <div>
-            <h3>Battle Log</h3>
+            <h3>Fight Log</h3>
             <div class="log">${log}</div>
             ${combat.lastRoll ? `<div class="dice-banner" style="margin-top:0.8rem">${escapeHtml(combat.lastRoll.narrative)}</div>` : ''}
           </div>
@@ -470,14 +488,14 @@ function renderClash(state: AppState): string {
     `<div class="clash-stage" style="--combat-art:url('./refs/ref-arena-clash.png')">
       <div class="combat-backdrop pulse" aria-hidden="true"></div>
       <div class="panel">
-        <div class="scene-head"><h2>Clash</h2><span class="pill">Beat ${beat} / 2</span></div>
-        <p>Two major techniques collide. Choose your approach.</p>
+        <div class="scene-head"><h2>Power Clash</h2><span class="pill">Exchange ${beat} / 2</span></div>
+        <p>Your attacks collide. Pick how you fight this exchange — buttons below are live.</p>
         <div class="clash-choices">
-          <button data-action="clash" data-payload="push"><strong>Push</strong><span class="hint">Spend Flux, roll Control</span></button>
-          <button data-action="clash" data-payload="overcharge"><strong>Overcharge</strong><span class="hint">Add power, gain Pressure, risk injury</span></button>
-          <button data-action="clash" data-payload="redirect"><strong>Redirect</strong><span class="hint">Use Intellect/Control to change the angle</span></button>
-          <button data-action="clash" data-payload="call"><strong>Call for aid</strong><span class="hint">Spend Resolve for party help</span></button>
-          <button data-action="clash" data-payload="release"><strong>Release</strong><span class="hint">Abandon the clash and evade</span></button>
+          <button data-action="clash" data-payload="push"><strong>Push</strong><span class="hint">Spend Energy, contest with Control</span></button>
+          <button data-action="clash" data-payload="overcharge"><strong>Overcharge</strong><span class="hint">More power, more Stress, risk injury</span></button>
+          <button data-action="clash" data-payload="redirect"><strong>Redirect</strong><span class="hint">Outthink the angle (Intellect / Control)</span></button>
+          <button data-action="clash" data-payload="call"><strong>Call for help</strong><span class="hint">Spend Resolve for an ally assist</span></button>
+          <button data-action="clash" data-payload="release"><strong>Break off</strong><span class="hint">Drop the clash and try to dodge</span></button>
         </div>
       </div>
     </div>`,
@@ -573,10 +591,10 @@ function renderSheet(state: AppState): string {
       <div class="panel aura-panel">
         <img src="./refs/ref-power-surge.png" alt="Flux power surge reference" />
         <div class="scanner-bar compact">
-          <span class="res-label">RESONANCE (held)</span>
+            <span class="res-label">POWER READING (held back)</span>
           <div class="res-hero">${formatResonance(res.displayed)}</div>
-          <div class="muted">${res.bandLabel} · Core ${res.coreScore} ×${res.scaleFactor} ×${res.formFactor.toFixed(1)} form</div>
-          <div class="res-open">Wide open estimate: <strong>${formatResonance(open.displayed)}</strong></div>
+          <div class="muted">${res.bandLabel} class · Base ${res.coreScore} × band ${res.scaleFactor} × form ${res.formFactor.toFixed(1)}</div>
+          <div class="res-open">All-out estimate: <strong>${formatResonance(open.displayed)}</strong></div>
         </div>
       </div>
       <div class="panel">
@@ -590,11 +608,11 @@ function renderSheet(state: AppState): string {
           .join('')}</div>
         <p class="muted">${BAND_SCOPE[p.powerBand]}</p>
         <div class="statline resources" style="margin:0.6rem 0 1rem">
-          <span>VIT ${d.vitality}</span><span>FLUX ${d.flux}</span><span>Guard ${d.guard}</span><span>Stagger threshold ${d.stagger}</span><span>Resolve ${p.resolve}</span><span>Lv ${p.level}</span>
+          <span>Health ${d.vitality}</span><span>Energy ${d.flux}</span><span>Defense ${d.guard}</span><span>Stun limit ${d.stagger}</span><span>Resolve ${p.resolve}</span><span>Level ${p.level}</span>
         </div>
-        <h3>Attributes</h3>
+        <h3>Stats</h3>
         <div class="sheet-grid">${attrs}</div>
-        <h3>Crossfall Scanner Benchmarks</h3>
+        <h3>Known Power Benchmarks</h3>
         <div class="bench-list">${benches}</div>
         <h3>Techniques</h3>
         <p>${p.techniques.map((t) => TECHNIQUES[t]?.name ?? t).join(' · ')}</p>
