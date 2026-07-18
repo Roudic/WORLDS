@@ -21,6 +21,14 @@ npm test      # rules + story graph tests
 npm run build # production build to game/dist
 ```
 
+## Deploy
+
+Production build is published from `game/` (Vite → `dist`).
+
+- **Netlify:** `cd game && npx netlify-cli deploy --dir=dist --prod` (or connect the repo; `netlify.toml` is included)
+- **GitHub Pages:** workflow at `.github/workflows/deploy-pages.yml` — enable Pages in repo settings → Source: GitHub Actions, then merge to `main` or run the workflow
+- Static snapshot also lands in `deploy/` for manual hosting
+
 ## What's in the game
 
 - Character creation: Origin × Discipline × dual Convictions × motivation

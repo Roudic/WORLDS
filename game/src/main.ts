@@ -12,7 +12,7 @@ function dispatch(action: Action) {
 
 function paint() {
   app.innerHTML = render(state);
-  bind(app, state, dispatch);
+  bind(app, dispatch);
   if (state.screen === 'create') bindCreateExtra(app, state, dispatch);
 }
 

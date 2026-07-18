@@ -34,7 +34,7 @@ export function render(state: AppState): string {
   }
 }
 
-export function bind(root: HTMLElement, state: AppState, dispatch: (a: Action) => void) {
+export function bind(root: HTMLElement, dispatch: (a: Action) => void) {
   root.querySelectorAll('[data-action]').forEach((el) => {
     el.addEventListener('click', () => {
       const action = (el as HTMLElement).dataset.action!;
