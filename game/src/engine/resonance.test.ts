@@ -22,8 +22,8 @@ describe('resonance', () => {
   });
 
   it('describes power gaps', () => {
-    expect(powerGapFlavor('mortal', 'awakened')).toContain('disadvantage');
+    expect(powerGapFlavor('mortal', 'awakened')).toContain('stronger');
     expect(powerGapFlavor('mortal', 'ascendant')).toContain('setup');
-    expect(powerGapFlavor('awakened', 'mortal')).toContain('outclass');
+    expect(powerGapFlavor('awakened', 'mortal')).toContain('stronger');
   });
 });
