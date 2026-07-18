@@ -1,7 +1,7 @@
 {
   "name": "riftwake",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,8 +11,12 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@types/three": "^0.185.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
   }
 }

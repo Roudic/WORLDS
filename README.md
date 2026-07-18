@@ -31,13 +31,12 @@ Production build is published from `game/` (Vite → `dist`).
 
 ## What's in the game
 
+- **3D WebGL arena** (Three.js): title cityscape, combat stage, auras, clash beams
 - Character creation: Origin × Discipline × dual Convictions × motivation
 - Dice subsystem with outcome ladder, advantage, and Rift Die
-- Attributes, Vitality, Flux, Guard, Resolve, Pressure, Resonance bands
-- Turn-based tactical combat: techniques, Stagger, combat conversation, Ascension, Clash
-- Full **Crossfall Trials** saga (arrival → trials → Riftwake) with branching choices
-- Companions (Sori, Tamsin, Ivo), rival Vexa, mentor Maelin, Custodian finale
-- Multiple endings: Destroy / Stabilize / Synchronize / Release / Lose
+- Power readings, Energy, Health, Defense, Stun, Stress, power bands
+- Turn-based tactical combat: moves, Power Up, Scan, Transform, Clash
+- Full **Crossfall Trials** saga with branching choices and multiple endings
 - Local save / continue
 
 ## Design docs

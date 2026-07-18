@@ -1,5 +1,5 @@
 import { TECHNIQUES } from '../data/catalog';
-import { artForCombat, artForScene, VISUAL_REFS } from '../data/visuals';
+import { artForScene, VISUAL_REFS } from '../data/visuals';
 import { activeCombatant } from '../engine/combat';
 import {
   BAND_SCOPE,
@@ -171,20 +171,16 @@ function shell(content: string, state: AppState, opts?: { showNav?: boolean }) {
 }
 
 function renderTitle(state: AppState): string {
-  return `<div class="hero-title fullbleed">
-    <div class="hero-stage" style="--hero:url('./refs/ref-crossfall-skyline.png')">
-      <div class="hero-parallax" aria-hidden="true"></div>
-      <div class="hero-veil"></div>
-      <div class="hero-copy">
-        <p class="brand-mark">Project <em>Riftwake</em></p>
-        <p class="tagline">Party tactical RPG in a joined-reality city. Master Flux, bonds, and improbable dice — without equal odds.</p>
-        <div class="rule">Anything can happen, but everything does not have the same chance of happening.</div>
-        <div class="actions">
-          <button class="primary" data-action="goto-create">New Campaign</button>
-          <button data-action="continue" ${state.save ? '' : 'disabled'}>Continue</button>
-          <button data-action="goto-gallery">Visual Refs</button>
-          <button class="danger" data-action="delete-save" ${state.save ? '' : 'disabled'}>Clear Save</button>
-        </div>
+  return `<div class="hero-title fullbleed over-3d">
+    <div class="hero-copy glass">
+      <p class="brand-mark">Project <em>Riftwake</em></p>
+      <p class="tagline">3D tactical battles in a joined-reality city. Build power, scan ratings, and clash with explosive Energy.</p>
+      <div class="rule">Anything can happen, but everything does not have the same chance of happening.</div>
+      <div class="actions">
+        <button class="primary" data-action="goto-create">New Campaign</button>
+        <button data-action="continue" ${state.save ? '' : 'disabled'}>Continue</button>
+        <button data-action="goto-gallery">Visual Refs</button>
+        <button class="danger" data-action="delete-save" ${state.save ? '' : 'disabled'}>Clear Save</button>
       </div>
     </div>
     <div class="ref-strip">
@@ -407,7 +403,6 @@ function renderCombat(state: AppState): string {
       ? `<button class="primary" data-action="ascend">Transform · Tempered Wake</button>`
       : '';
 
-  const backdrop = artForCombat(combat.id);
   const ascendedClass = player.ascended || player.output >= 0.9 ? ' ascended' : '';
   const playerRes = combatantResonance(player);
   const foe = combat.combatants.find((c) => c.id === selectedTarget);
@@ -419,58 +414,58 @@ function renderCombat(state: AppState): string {
       : `${active.name}'s turn`;
 
   return shell(
-    `<div class="combat-stage${ascendedClass}" style="--combat-art:url('${backdrop}')">
-      <div class="combat-backdrop" aria-hidden="true"></div>
-      <div class="energy-ring" aria-hidden="true"></div>
-      <div class="panel combat-panel">
-        <div class="scene-head">
-          <h2>${escapeHtml(combat.name)}</h2>
-          <span class="meta">Round ${combat.round} · ${escapeHtml(combat.objective.label)}</span>
-        </div>
-        <div class="turn-banner ${canAct ? 'ready' : 'wait'}">
-          <strong>${escapeHtml(whoseTurn)}</strong>
-          ${
-            canAct
-              ? '<span>Choose a target, then use a move below.</span>'
-              : '<span>Allies/enemies are resolving — hit Continue if buttons stay locked.</span>'
-          }
-          ${canAct ? '' : '<button class="primary" data-action="continue-turn">Continue</button>'}
-        </div>
-        <div class="scanner-bar">
-          <div>
-            <span class="res-label">YOUR POWER READING</span>
-            <div class="res-hero">${formatResonance(playerRes.displayed)}</div>
-            <div class="muted">${playerRes.bandLabel} class · Output ${outputLabel(player.output)} ${Math.round(player.output * 100)}% · ${BAND_SCOPE[player.powerBand]}</div>
+    `<div class="combat-stage over-3d${ascendedClass}">
+      <div class="combat-hud">
+        <div class="panel combat-panel">
+          <div class="scene-head">
+            <h2>${escapeHtml(combat.name)}</h2>
+            <span class="meta">3D Arena · Round ${combat.round} · ${escapeHtml(combat.objective.label)}</span>
           </div>
-          <div class="band-track">${bandTrack(player.powerBand)
-            .map(
-              (b) =>
-                `<span class="band-step ${b.reached ? 'reached' : ''} ${b.active ? 'active' : ''}">${escapeHtml(b.label)}</span>`,
-            )
-            .join('')}</div>
-        </div>
-        <p class="muted">${escapeHtml(combat.description)}${gapText ? ` · ${escapeHtml(gapText)}` : ''}</p>
-        <div class="combat-layout">
-          <div>
-            ${list}
-            <h3>Target</h3>
-            <div class="target-row">${targets}</div>
-            <h3>Combat Actions</h3>
-            <div class="actions power-actions">
-              <button ${canAct ? '' : 'disabled'} data-action="power-up">Power Up</button>
-              <button ${canAct ? '' : 'disabled'} data-action="suppress">Hold Back</button>
-              <button ${canAct && selectedTarget ? '' : 'disabled'} data-action="scan" data-payload="${selectedTarget}">Scan Power</button>
-              ${ascendBtn}
-              ${talkOk && canAct && talkTarget ? `<button data-action="combat-talk" data-payload="${talkTarget}">Talk Them Down</button>` : ''}
-              ${canAct ? '' : '<button data-action="continue-turn">Continue</button>'}
+          <div class="turn-banner ${canAct ? 'ready' : 'wait'}">
+            <strong>${escapeHtml(whoseTurn)}</strong>
+            ${
+              canAct
+                ? '<span>Choose a target, then use a move. Watch the 3D arena react.</span>'
+                : '<span>Resolving other fighters — tap Continue if locked.</span>'
+            }
+            ${canAct ? '' : '<button class="primary" data-action="continue-turn">Continue</button>'}
+          </div>
+          <div class="scanner-bar">
+            <div>
+              <span class="res-label">YOUR POWER READING</span>
+              <div class="res-hero">${formatResonance(playerRes.displayed)}</div>
+              <div class="muted">${playerRes.bandLabel} class · Output ${outputLabel(player.output)} ${Math.round(player.output * 100)}% · ${BAND_SCOPE[player.powerBand]}</div>
             </div>
-            <h3>Moves ${canAct ? '' : '<span class="muted">(locked until your turn)</span>'}</h3>
-            <div class="tech-grid">${techs}</div>
+            <div class="band-track">${bandTrack(player.powerBand)
+              .map(
+                (b) =>
+                  `<span class="band-step ${b.reached ? 'reached' : ''} ${b.active ? 'active' : ''}">${escapeHtml(b.label)}</span>`,
+              )
+              .join('')}</div>
           </div>
-          <div>
-            <h3>Fight Log</h3>
-            <div class="log">${log}</div>
-            ${combat.lastRoll ? `<div class="dice-banner" style="margin-top:0.8rem">${escapeHtml(combat.lastRoll.narrative)}</div>` : ''}
+          <p class="muted">${escapeHtml(combat.description)}${gapText ? ` · ${escapeHtml(gapText)}` : ''}</p>
+          <div class="combat-layout">
+            <div>
+              ${list}
+              <h3>Target</h3>
+              <div class="target-row">${targets}</div>
+              <h3>Combat Actions</h3>
+              <div class="actions power-actions">
+                <button ${canAct ? '' : 'disabled'} data-action="power-up">Power Up</button>
+                <button ${canAct ? '' : 'disabled'} data-action="suppress">Hold Back</button>
+                <button ${canAct && selectedTarget ? '' : 'disabled'} data-action="scan" data-payload="${selectedTarget}">Scan Power</button>
+                ${ascendBtn}
+                ${talkOk && canAct && talkTarget ? `<button data-action="combat-talk" data-payload="${talkTarget}">Talk Them Down</button>` : ''}
+                ${canAct ? '' : '<button data-action="continue-turn">Continue</button>'}
+              </div>
+              <h3>Moves ${canAct ? '' : '<span class="muted">(locked until your turn)</span>'}</h3>
+              <div class="tech-grid">${techs}</div>
+            </div>
+            <div>
+              <h3>Fight Log</h3>
+              <div class="log">${log}</div>
+              ${combat.lastRoll ? `<div class="dice-banner" style="margin-top:0.8rem">${escapeHtml(combat.lastRoll.narrative)}</div>` : ''}
+            </div>
           </div>
         </div>
       </div>
@@ -485,11 +480,10 @@ function renderClash(state: AppState): string {
   if (!clash) return renderCombat(state);
   const beat = clash.beats.length + 1;
   return shell(
-    `<div class="clash-stage" style="--combat-art:url('./refs/ref-arena-clash.png')">
-      <div class="combat-backdrop pulse" aria-hidden="true"></div>
-      <div class="panel">
+    `<div class="clash-stage over-3d">
+      <div class="panel clash-panel">
         <div class="scene-head"><h2>Power Clash</h2><span class="pill">Exchange ${beat} / 2</span></div>
-        <p>Your attacks collide. Pick how you fight this exchange — buttons below are live.</p>
+        <p>Beams lock in the 3D arena. Pick how you fight this exchange.</p>
         <div class="clash-choices">
           <button data-action="clash" data-payload="push"><strong>Push</strong><span class="hint">Spend Energy, contest with Control</span></button>
           <button data-action="clash" data-payload="overcharge"><strong>Overcharge</strong><span class="hint">More power, more Stress, risk injury</span></button>
