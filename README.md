@@ -43,6 +43,8 @@ Production build is published from `game/` (Vite → `dist`).
 ## Design docs
 
 - [Game Foundation v0.1](docs/project-riftwake-game-foundation.md)
+- [Visual Style Guide](docs/visual-style-guide.md)
+- Concept plates in [`docs/visual-refs/`](docs/visual-refs/) (also in-game under **Visual Refs**)
 
 ## Project layout
 

@@ -176,7 +176,8 @@ export type ScreenId =
   | 'combat'
   | 'clash'
   | 'ending'
-  | 'sheet';
+  | 'sheet'
+  | 'gallery';
 
 export interface CompanionDef {
   id: string;

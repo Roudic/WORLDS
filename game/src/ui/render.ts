@@ -1,4 +1,5 @@
 import { TECHNIQUES } from '../data/catalog';
+import { artForCombat, artForScene, VISUAL_REFS } from '../data/visuals';
 import { activeCombatant } from '../engine/combat';
 import type { Action, AppState } from '../state/game';
 import {
@@ -29,6 +30,8 @@ export function render(state: AppState): string {
       return renderEnding(state);
     case 'sheet':
       return renderSheet(state);
+    case 'gallery':
+      return renderGallery(state);
     default:
       return renderTitle(state);
   }
@@ -70,6 +73,9 @@ function handleClick(
       break;
     case 'goto-title':
       dispatch({ type: 'GOTO', screen: 'title' });
+      break;
+    case 'goto-gallery':
+      dispatch({ type: 'GOTO', screen: 'gallery' });
       break;
     case 'start-new':
       dispatch({ type: 'START_NEW' });
@@ -141,17 +147,31 @@ function shell(content: string, state: AppState, opts?: { showNav?: boolean }) {
 }
 
 function renderTitle(state: AppState): string {
-  return `<div class="hero-title">
-    <div class="panel hero-card">
-      <div class="pill">Eidara · Crossfall Trials</div>
-      <h1>Project <em>Riftwake</em></h1>
-      <p class="tagline">A party-based cinematic tactical RPG. Build a hybrid Flux fighter, make costly choices, and rise through unstable reality.</p>
-      <div class="rule">Anything can happen, but everything does not have the same chance of happening.</div>
-      <div class="actions">
-        <button class="primary" data-action="goto-create">New Campaign</button>
-        <button data-action="continue" ${state.save ? '' : 'disabled'}>Continue</button>
-        <button class="danger" data-action="delete-save" ${state.save ? '' : 'disabled'}>Clear Save</button>
+  return `<div class="hero-title fullbleed">
+    <div class="hero-stage" style="--hero:url('./refs/ref-crossfall-skyline.png')">
+      <div class="hero-parallax" aria-hidden="true"></div>
+      <div class="hero-veil"></div>
+      <div class="hero-copy">
+        <p class="brand-mark">Project <em>Riftwake</em></p>
+        <p class="tagline">Party tactical RPG in a joined-reality city. Master Flux, bonds, and improbable dice — without equal odds.</p>
+        <div class="rule">Anything can happen, but everything does not have the same chance of happening.</div>
+        <div class="actions">
+          <button class="primary" data-action="goto-create">New Campaign</button>
+          <button data-action="continue" ${state.save ? '' : 'disabled'}>Continue</button>
+          <button data-action="goto-gallery">Visual Refs</button>
+          <button class="danger" data-action="delete-save" ${state.save ? '' : 'disabled'}>Clear Save</button>
+        </div>
       </div>
+    </div>
+    <div class="ref-strip">
+      ${VISUAL_REFS.slice(0, 4)
+        .map(
+          (r) => `<button class="ref-thumb" data-action="goto-gallery" title="${escapeHtml(r.title)}">
+            <img src="${r.src}" alt="${escapeHtml(r.title)}" loading="lazy" />
+            <span>${escapeHtml(r.title)}</span>
+          </button>`,
+        )
+        .join('')}
     </div>
   </div>`;
 }
@@ -190,16 +210,24 @@ function renderCreate(state: AppState): string {
   ).join('');
 
   return shell(
-    `<div class="panel">
-      <div class="scene-head"><h2>Character Creation</h2><span class="meta">Three layers · Origin · Discipline · Conviction</span></div>
-      <div class="field"><label>Name</label><input id="name-input" value="${escapeHtml(d.name ?? '')}" maxlength="24" /></div>
-      <h3>Origin</h3><div class="grid-2">${originCards}</div>
-      <h3>Discipline</h3><div class="grid-2">${discCards}</div>
-      <h3>Convictions (pick two)</h3><div class="grid-2" id="conviction-grid">${convCards}</div>
-      <h3>Motivation</h3><div class="grid-2">${motCards}</div>
-      <div class="actions" style="margin-top:1.2rem">
-        <button data-action="goto-title">Back</button>
-        <button class="primary" data-action="start-new">Enter Crossfall</button>
+    `<div class="create-layout">
+      <aside class="create-visual panel">
+        <img class="create-art" src="./refs/ref-tempered-wake.png" alt="Tempered Wake ascension reference" />
+        <img class="create-art flux" src="./refs/ref-flux-types.png" alt="Flux type reference" />
+        <p class="muted">Visual lock: original silhouettes, Flux materials, no borrowed power-up tropes.</p>
+      </aside>
+      <div class="panel">
+        <div class="scene-head"><h2>Character Creation</h2><span class="meta">Origin · Discipline · Conviction</span></div>
+        <div class="field"><label>Name</label><input id="name-input" value="${escapeHtml(d.name ?? '')}" maxlength="24" /></div>
+        <h3>Origin</h3><div class="grid-2">${originCards}</div>
+        <h3>Discipline</h3><div class="grid-2">${discCards}</div>
+        <h3>Convictions (pick two)</h3><div class="grid-2" id="conviction-grid">${convCards}</div>
+        <h3>Motivation</h3><div class="grid-2">${motCards}</div>
+        <div class="actions" style="margin-top:1.2rem">
+          <button data-action="goto-title">Back</button>
+          <button data-action="goto-gallery">Visual Refs</button>
+          <button class="primary" data-action="start-new">Enter Crossfall</button>
+        </div>
       </div>
     </div>`,
     state,
@@ -248,16 +276,24 @@ function renderScene(state: AppState): string {
     .map((id) => COMPANIONS[id]?.name ?? id)
     .join(' · ');
 
+  const art = artForScene(scene.id, scene.chapter);
+
   return shell(
-    `<div class="panel">
-      <div class="scene-head">
-        <h2>${escapeHtml(scene.title)}</h2>
-        <span class="pill">Chapter ${scene.chapter}</span>
+    `<div class="scene-stage">
+      <figure class="scene-art panel">
+        <img src="${art}" alt="" />
+        <figcaption>${escapeHtml(scene.location)}</figcaption>
+      </figure>
+      <div class="panel">
+        <div class="scene-head">
+          <h2>${escapeHtml(scene.title)}</h2>
+          <span class="pill">Chapter ${scene.chapter}</span>
+        </div>
+        <div class="location">${escapeHtml(scene.location)}${party ? ` · Party: ${escapeHtml(party)}` : ''}</div>
+        ${state.lastDiceText ? `<div class="dice-banner">${escapeHtml(state.lastDiceText)}</div>` : ''}
+        <div class="body">${escapeHtml(scene.body)}</div>
+        <div class="choice-list">${choices}</div>
       </div>
-      <div class="location">${escapeHtml(scene.location)}${party ? ` · Party: ${escapeHtml(party)}` : ''}</div>
-      ${state.lastDiceText ? `<div class="dice-banner">${escapeHtml(state.lastDiceText)}</div>` : ''}
-      <div class="body">${escapeHtml(scene.body)}</div>
-      <div class="choice-list">${choices}</div>
     </div>`,
     state,
     { showNav: true },
@@ -337,29 +373,35 @@ function renderCombat(state: AppState): string {
       ? `<button data-action="ascend">Ascension · Tempered Wake</button>`
       : '';
 
+  const backdrop = artForCombat(combat.id);
+  const ascendedClass = player.ascended ? ' ascended' : '';
+
   return shell(
-    `<div class="panel">
-      <div class="scene-head">
-        <h2>${escapeHtml(combat.name)}</h2>
-        <span class="meta">Round ${combat.round} · ${escapeHtml(combat.objective.label)}</span>
-      </div>
-      <p class="muted">${escapeHtml(combat.description)}</p>
-      <div class="combat-layout">
-        <div>
-          ${list}
-          <h3>Target</h3>
-          <div class="target-row">${targets}</div>
-          <h3>Techniques ${canAct ? '' : '<span class="muted">(waiting)</span>'}</h3>
-          <div class="tech-grid">${techs}</div>
-          <div class="actions" style="margin-top:0.8rem">
-            ${ascendBtn}
-            ${talkOk && canAct && talkTarget ? `<button data-action="combat-talk" data-payload="${talkTarget}">Combat Conversation</button>` : ''}
-          </div>
+    `<div class="combat-stage${ascendedClass}" style="--combat-art:url('${backdrop}')">
+      <div class="combat-backdrop" aria-hidden="true"></div>
+      <div class="panel combat-panel">
+        <div class="scene-head">
+          <h2>${escapeHtml(combat.name)}</h2>
+          <span class="meta">Round ${combat.round} · ${escapeHtml(combat.objective.label)}</span>
         </div>
-        <div>
-          <h3>Battle Log</h3>
-          <div class="log">${log}</div>
-          ${combat.lastRoll ? `<div class="dice-banner" style="margin-top:0.8rem">${escapeHtml(combat.lastRoll.narrative)}</div>` : ''}
+        <p class="muted">${escapeHtml(combat.description)}</p>
+        <div class="combat-layout">
+          <div>
+            ${list}
+            <h3>Target</h3>
+            <div class="target-row">${targets}</div>
+            <h3>Techniques ${canAct ? '' : '<span class="muted">(waiting)</span>'}</h3>
+            <div class="tech-grid">${techs}</div>
+            <div class="actions" style="margin-top:0.8rem">
+              ${ascendBtn}
+              ${talkOk && canAct && talkTarget ? `<button data-action="combat-talk" data-payload="${talkTarget}">Combat Conversation</button>` : ''}
+            </div>
+          </div>
+          <div>
+            <h3>Battle Log</h3>
+            <div class="log">${log}</div>
+            ${combat.lastRoll ? `<div class="dice-banner" style="margin-top:0.8rem">${escapeHtml(combat.lastRoll.narrative)}</div>` : ''}
+          </div>
         </div>
       </div>
     </div>`,
@@ -373,15 +415,18 @@ function renderClash(state: AppState): string {
   if (!clash) return renderCombat(state);
   const beat = clash.beats.length + 1;
   return shell(
-    `<div class="panel">
-      <div class="scene-head"><h2>Clash</h2><span class="pill">Beat ${beat} / 2</span></div>
-      <p>Two major techniques collide. Choose your approach.</p>
-      <div class="clash-choices">
-        <button data-action="clash" data-payload="push"><strong>Push</strong><span class="hint">Spend Flux, roll Control</span></button>
-        <button data-action="clash" data-payload="overcharge"><strong>Overcharge</strong><span class="hint">Add power, gain Pressure, risk injury</span></button>
-        <button data-action="clash" data-payload="redirect"><strong>Redirect</strong><span class="hint">Use Intellect/Control to change the angle</span></button>
-        <button data-action="clash" data-payload="call"><strong>Call for aid</strong><span class="hint">Spend Resolve for party help</span></button>
-        <button data-action="clash" data-payload="release"><strong>Release</strong><span class="hint">Abandon the clash and evade</span></button>
+    `<div class="clash-stage" style="--combat-art:url('./refs/ref-arena-clash.png')">
+      <div class="combat-backdrop pulse" aria-hidden="true"></div>
+      <div class="panel">
+        <div class="scene-head"><h2>Clash</h2><span class="pill">Beat ${beat} / 2</span></div>
+        <p>Two major techniques collide. Choose your approach.</p>
+        <div class="clash-choices">
+          <button data-action="clash" data-payload="push"><strong>Push</strong><span class="hint">Spend Flux, roll Control</span></button>
+          <button data-action="clash" data-payload="overcharge"><strong>Overcharge</strong><span class="hint">Add power, gain Pressure, risk injury</span></button>
+          <button data-action="clash" data-payload="redirect"><strong>Redirect</strong><span class="hint">Use Intellect/Control to change the angle</span></button>
+          <button data-action="clash" data-payload="call"><strong>Call for aid</strong><span class="hint">Spend Resolve for party help</span></button>
+          <button data-action="clash" data-payload="release"><strong>Release</strong><span class="hint">Abandon the clash and evade</span></button>
+        </div>
       </div>
     </div>`,
     state,
@@ -394,16 +439,46 @@ function renderEnding(state: AppState): string {
   const def = ENDINGS[id] ?? ENDINGS.lose;
   const body = def.summary(state.save?.flags ?? {});
   return shell(
-    `<div class="panel ending">
-      <div class="pill">Vertical Slice Complete</div>
-      <h2>${escapeHtml(def.title)}</h2>
-      <div class="body">${escapeHtml(body)}</div>
-      <p class="muted">There is no single perfect result. Preparation determined which costs you avoided.</p>
-      <div class="actions">
-        <button class="primary" data-action="goto-create">Play again</button>
-        <button data-action="goto-title">Title</button>
-        <button data-action="open-sheet">Review character</button>
+    `<div class="ending-stage">
+      <figure class="scene-art panel wide">
+        <img src="./refs/ref-axis-engine.png" alt="Axis Engine aftermath" />
+      </figure>
+      <div class="panel ending">
+        <div class="pill">Vertical Slice Complete</div>
+        <h2>${escapeHtml(def.title)}</h2>
+        <div class="body">${escapeHtml(body)}</div>
+        <p class="muted">There is no single perfect result. Preparation determined which costs you avoided.</p>
+        <div class="actions">
+          <button class="primary" data-action="goto-create">Play again</button>
+          <button data-action="goto-title">Title</button>
+          <button data-action="goto-gallery">Visual Refs</button>
+          <button data-action="open-sheet">Review character</button>
+        </div>
       </div>
+    </div>`,
+    state,
+  );
+}
+
+function renderGallery(state: AppState): string {
+  const cards = VISUAL_REFS.map(
+    (r) => `<article class="gallery-card panel">
+      <img src="${r.src}" alt="${escapeHtml(r.title)}" loading="lazy" />
+      <div>
+        <h3>${escapeHtml(r.title)}</h3>
+        <p class="muted">${escapeHtml(r.caption)}</p>
+      </div>
+    </article>`,
+  ).join('');
+
+  return shell(
+    `<div class="panel">
+      <div class="scene-head">
+        <h2>Visual References</h2>
+        <button data-action="goto-title">Back</button>
+      </div>
+      <p class="muted">Art direction plates for Crossfall, Flux, Ascension, companions, and the Axis Engine. Use these as the silhouette and material lock for production.</p>
+      <div class="gallery-grid">${cards}</div>
     </div>`,
     state,
   );
