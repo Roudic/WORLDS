@@ -314,9 +314,10 @@ export const ASCENSIONS: Record<string, AscensionDef> = {
     id: 'tempered_wake',
     name: 'Tempered Wake',
     description:
-      'A disciplined Ascension born from hybrid Flux control. Geometry tightens, Pulse and Lumen braid into a luminous wake along the limbs.',
+      'First real transform. All stats still count — then Power Level jumps ×2.5.',
     source: 'catalytic',
     powerBandShift: 1,
+    powerMultiplier: 2.5,
     attributeBonus: { might: 2, control: 3, will: 2, agility: 1 },
     fluxUpkeep: 2,
     pressureGain: 2,
@@ -324,6 +325,21 @@ export const ASCENSIONS: Record<string, AscensionDef> = {
     failureConsequence: 'Collateral rift scarring and companion trust damage',
     grantedTechniqueIds: ['tempered_flare'],
     visualLanguage: 'Angular luminous wake, no hair-color gimmick, unique silhouette',
+  },
+  rift_sync: {
+    id: 'rift_sync',
+    name: 'Rift Sync',
+    description: 'High-risk form. Power Level ×8 while synced to Axis feedback.',
+    source: 'riftborn',
+    powerBandShift: 2,
+    powerMultiplier: 8,
+    attributeBonus: { control: 4, will: 3, presence: 2 },
+    fluxUpkeep: 3,
+    pressureGain: 4,
+    controlDifficulty: 18,
+    failureConsequence: 'Identity bleed across alternate Crossfalls',
+    grantedTechniqueIds: ['tempered_flare', 'custodian_rewrite'],
+    visualLanguage: 'Prismatic fracture wake, unstable silhouette',
   },
 };
 

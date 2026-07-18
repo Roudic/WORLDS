@@ -32,11 +32,10 @@ Production build is published from `game/` (Vite → `dist`).
 ## What's in the game
 
 - **3D WebGL arena** (Three.js): title cityscape, combat stage, auras, clash beams
-- Character creation: Origin × Discipline × dual Convictions × motivation
-- Dice subsystem with outcome ladder, advantage, and Rift Die
-- Power readings, Energy, Health, Defense, Stun, Stress, power bands
-- Turn-based tactical combat: moves, Power Up, Scan, Transform, Clash
-- Full **Crossfall Trials** saga with branching choices and multiple endings
+- **BYOND-style Power Level:** Strength/Endurance/Speed/Resistance/Offense/Defense/Force → one PL, then **form multipliers** (×1 / ×2.5 / ×4 / ×8 / ×15)
+- **Story AI director:** procedural grind — train stats (dice), spar, missions, transform drills, rival calls
+- Character creation + authored Crossfall Trials saga (still dice-driven)
+- Turn-based combat scaled by Power Level gaps
 - Local save / continue
 
 ## Design docs

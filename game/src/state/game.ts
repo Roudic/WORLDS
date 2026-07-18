@@ -33,8 +33,9 @@ import {
   useTechnique,
   type CombatState,
 } from '../engine/combat';
+import { applyAiChoice, generateAiHub, openStoryAi } from '../story/director';
 
-const SAVE_KEY = 'riftwake.save.v1';
+const SAVE_KEY = 'riftwake.save.v2';
 
 export interface AppState {
   screen: ScreenId;
@@ -70,7 +71,7 @@ export function createNewSave(player: PlayerBuild): SaveGame {
     maelin: { ...emptyRelationship(), approval: 1, trust: 1 },
   };
   return {
-    version: 1,
+    version: 2,
     player,
     relationships,
     flags: {},
@@ -79,6 +80,9 @@ export function createNewSave(player: PlayerBuild): SaveGame {
     hubUnlocked: ['gate', 'clinic', 'arena'],
     chapter: 1,
     log: ['You arrive in Crossfall for the Trials.'],
+    aiBeat: null,
+    storySeed: Date.now() % 1_000_000,
+    trainCount: 0,
   };
 }
 
@@ -105,9 +109,19 @@ export function initialAppState(): AppState {
 
 export function loadSave(): SaveGame | null {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw =
+      localStorage.getItem(SAVE_KEY) ?? localStorage.getItem('riftwake.save.v1');
     if (!raw) return null;
-    return JSON.parse(raw) as SaveGame;
+    const save = JSON.parse(raw) as SaveGame;
+    save.version = 2;
+    save.player.trainedStats = save.player.trainedStats ?? {};
+    save.player.formId = save.player.formId ?? 'base';
+    save.trainCount = save.trainCount ?? 0;
+    save.storySeed = save.storySeed ?? Date.now() % 1_000_000;
+    if (save.sceneId === 'ai_runtime' && !save.aiBeat) {
+      save.aiBeat = generateAiHub(save);
+    }
+    return save;
   } catch {
     return null;
   }
@@ -142,6 +156,8 @@ export function finalizeDraft(draft: AppState['draft']): PlayerBuild {
     ascensionUnlocked: false,
     ascensionMastery: 0,
     catalystReady: false,
+    trainedStats: {},
+    formId: 'base',
   };
 }
 
@@ -323,9 +339,21 @@ export function startCombatFrom(
   if (!combat) {
     return { ...state, toast: `Missing encounter ${combatId}` };
   }
-  // Auto-ascend if already awakened from story breakthrough
+  // Auto-ascend if already in a multiplied form
   let c = combat;
-  if (state.save.flags['Ascension.TemperedWake']) {
+  const form = state.save.player.formId;
+  if (
+    form &&
+    form !== 'base' &&
+    (state.save.flags['Ascension.TemperedWake'] || state.save.player.ascensionUnlocked)
+  ) {
+    c = activateAscension(
+      c,
+      'player',
+      form === 'rift_sync' ? 'rift_sync' : 'tempered_wake',
+      true,
+    );
+  } else if (state.save.flags['Ascension.TemperedWake']) {
     c = activateAscension(c, 'player', 'tempered_wake', true);
   }
   // Advance any non-player turns (companions / stragglers) until you can act
@@ -410,6 +438,9 @@ export function reduce(state: AppState, action: Action): AppState {
         save.sceneId = result.goTo;
         const sceneObj = SCENES[save.sceneId];
         if (sceneObj) save.chapter = sceneObj.chapter;
+        if (result.goTo === 'ai_runtime') {
+          save = openStoryAi(save);
+        }
       }
       persistSave(save);
       return {
@@ -417,6 +448,48 @@ export function reduce(state: AppState, action: Action): AppState {
         save,
         lastDiceText: result.diceText ?? null,
         toast: null,
+      };
+    }
+    case 'AI_CHOICE': {
+      if (!state.save) return state;
+      const result = applyAiChoice(state.save, action.choiceId);
+      let save = result.save;
+      if (result.goAuthored) {
+        save.sceneId = result.goAuthored;
+        save.aiBeat = null;
+      } else {
+        save.sceneId = 'ai_runtime';
+      }
+      persistSave(save);
+      if (result.combatId) {
+        return startCombatFrom(
+          {
+            ...state,
+            save,
+            lastDiceText: result.diceText ?? null,
+            toast: result.toast ?? null,
+          },
+          result.combatId,
+          'ai_runtime',
+        );
+      }
+      return {
+        ...state,
+        save,
+        screen: 'scene',
+        lastDiceText: result.diceText ?? null,
+        toast: result.toast ?? null,
+      };
+    }
+    case 'OPEN_STORY_AI': {
+      if (!state.save) return state;
+      const save = openStoryAi(state.save);
+      persistSave(save);
+      return {
+        ...state,
+        save,
+        screen: 'scene',
+        toast: 'Story AI online — train, spar, transform, follow threads.',
       };
     }
     case 'COMBAT_TECH': {
@@ -579,6 +652,9 @@ function finishCombat(state: AppState): AppState {
   save.sceneId = sceneId;
   const scene = SCENES[sceneId];
   if (scene) save.chapter = scene.chapter;
+  if (sceneId === 'ai_runtime') {
+    save.aiBeat = save.aiBeat ?? generateAiHub(save);
+  }
   persistSave(save);
   return {
     ...state,
@@ -609,6 +685,8 @@ export type Action =
   | { type: 'COMBAT_SCAN'; targetId: string }
   | { type: 'COMBAT_CONTINUE' }
   | { type: 'CLASH_CHOICE'; choice: string }
+  | { type: 'AI_CHOICE'; choiceId: string }
+  | { type: 'OPEN_STORY_AI' }
   | { type: 'OPEN_SHEET' }
   | { type: 'CLOSE_SHEET' }
   | { type: 'DELETE_SAVE' }

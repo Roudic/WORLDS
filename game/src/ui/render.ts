@@ -2,16 +2,20 @@ import { TECHNIQUES } from '../data/catalog';
 import { artForScene, VISUAL_REFS } from '../data/visuals';
 import { activeCombatant } from '../engine/combat';
 import {
-  BAND_SCOPE,
   attributeBars,
   bandTrack,
-  combatantResonance,
-  formatResonance,
   outputLabel,
-  playerResonance,
   powerGapFlavor,
   RESONANCE_BENCHMARKS,
 } from '../engine/resonance';
+import {
+  FORMS,
+  STAT_LABELS,
+  combatantPower,
+  formatPL,
+  playerPower,
+  type BattleStats,
+} from '../engine/power';
 import type { Action, AppState } from '../state/game';
 import {
   COMPANIONS,
@@ -142,6 +146,12 @@ function handleClick(
     case 'continue-turn':
       dispatch({ type: 'COMBAT_CONTINUE' });
       break;
+    case 'ai-choice':
+      if (payload) dispatch({ type: 'AI_CHOICE', choiceId: payload });
+      break;
+    case 'open-story-ai':
+      dispatch({ type: 'OPEN_STORY_AI' });
+      break;
     case 'clash':
       if (payload) dispatch({ type: 'CLASH_CHOICE', choice: payload });
       break;
@@ -153,13 +163,16 @@ function handleClick(
 
 function shell(content: string, state: AppState, opts?: { showNav?: boolean }) {
   const save = state.save;
-  const navRes = save ? formatResonance(playerResonance(save.player).displayed) : '';
+  const navRes = save
+    ? formatPL(playerPower(save.player, { formId: save.player.formId ?? 'base' }).powerLevel)
+    : '';
   const nav =
     opts?.showNav && save
       ? `<div class="topbar">
           <div class="brand">Project <span>Riftwake</span></div>
           <div class="actions">
-            <span class="meta">Ch.${save.chapter} · ${escapeHtml(save.player.name)} · Power <strong>${navRes}</strong> · Resolve ${save.player.resolve}</span>
+            <span class="meta">Ch.${save.chapter} · ${escapeHtml(save.player.name)} · PL <strong>${navRes}</strong> · Resolve ${save.player.resolve}</span>
+            <button data-action="open-story-ai">Story AI</button>
             <button data-action="open-sheet">Stats</button>
           </div>
         </div>`
@@ -277,6 +290,46 @@ export function bindCreateExtra(root: HTMLElement, state: AppState, dispatch: (a
 
 function renderScene(state: AppState): string {
   if (!state.save) return renderTitle(state);
+
+  // Story AI runtime beat
+  if (state.save.sceneId === 'ai_runtime' && state.save.aiBeat) {
+    const beat = state.save.aiBeat;
+    const pl = playerPower(state.save.player, { formId: state.save.player.formId ?? 'base' });
+    const choices = beat.choices
+      .map(
+        (c) => `<button data-action="ai-choice" data-payload="${c.id}">
+          ${escapeHtml(c.label)}
+          ${c.hint ? `<span class="hint">${escapeHtml(c.hint)}</span>` : ''}
+        </button>`,
+      )
+      .join('');
+    return shell(
+      `<div class="scene-stage">
+        <figure class="scene-art panel">
+          <img src="./refs/ref-power-surge.png" alt="" />
+          <figcaption>Story AI · PL ${formatPL(pl.powerLevel)} · ×${pl.formMultiplier}</figcaption>
+        </figure>
+        <div class="panel">
+          <div class="scene-head">
+            <h2>${escapeHtml(beat.title)}</h2>
+            <span class="pill">Story AI</span>
+          </div>
+          <div class="location">${escapeHtml(beat.location)}</div>
+          <div class="scanner-bar compact">
+            <span class="res-label">POWER LEVEL</span>
+            <div class="res-hero">${formatPL(pl.powerLevel)}</div>
+            <div class="muted">${pl.formName} ×${pl.formMultiplier} · Stat total ${pl.statTotal} · Trains ${state.save.trainCount ?? 0}</div>
+          </div>
+          ${state.lastDiceText ? `<div class="dice-banner">${escapeHtml(state.lastDiceText)}</div>` : ''}
+          <div class="body">${escapeHtml(beat.body)}</div>
+          <div class="choice-list">${choices}</div>
+        </div>
+      </div>`,
+      state,
+      { showNav: true },
+    );
+  }
+
   const scene = SCENES[state.save.sceneId];
   if (!scene) {
     return shell(`<div class="panel"><p>Missing scene ${state.save.sceneId}</p></div>`, state, {
@@ -297,6 +350,7 @@ function renderScene(state: AppState): string {
     .join(' · ');
 
   const art = artForScene(scene.id, scene.chapter);
+  const pl = playerPower(state.save.player, { formId: state.save.player.formId ?? 'base' });
 
   return shell(
     `<div class="scene-stage">
@@ -307,12 +361,15 @@ function renderScene(state: AppState): string {
       <div class="panel">
         <div class="scene-head">
           <h2>${escapeHtml(scene.title)}</h2>
-          <span class="pill">Chapter ${scene.chapter}</span>
+          <span class="pill">Chapter ${scene.chapter} · PL ${formatPL(pl.powerLevel)}</span>
         </div>
         <div class="location">${escapeHtml(scene.location)}${party ? ` · Party: ${escapeHtml(party)}` : ''}</div>
         ${state.lastDiceText ? `<div class="dice-banner">${escapeHtml(state.lastDiceText)}</div>` : ''}
         <div class="body">${escapeHtml(scene.body)}</div>
         <div class="choice-list">${choices}</div>
+        <div class="actions" style="margin-top:1rem">
+          <button data-action="open-story-ai">Open Story AI (train / grind)</button>
+        </div>
       </div>
     </div>`,
     state,
@@ -335,15 +392,15 @@ function renderCombat(state: AppState): string {
       const flux = Math.round((c.flux / Math.max(1, c.maxFlux)) * 100);
       const st = Math.round((c.stagger / Math.max(1, c.maxStagger)) * 100);
       const scanned = combat.tags.includes(`scanned:${c.id}`) || c.isPlayer || c.isCompanion;
-      const res = combatantResonance(c);
+      const res = combatantPower(c);
       const aura = c.ascended || c.output >= 0.9 || c.statuses.includes('aura') ? ' aura' : '';
       const surge = c.output >= 0.85 ? ' surge' : '';
       return `<div class="combatant${aura}${surge} ${c.id === active.id ? 'active' : ''} ${c.alive ? '' : 'down'}">
-        <div class="name"><span>${escapeHtml(c.name)}${c.ascended ? ' · TRANSFORMED' : ''}</span><span class="band-chip">${escapeHtml(res.bandLabel)}</span></div>
+        <div class="name"><span>${escapeHtml(c.name)}${c.ascended ? ` · ${escapeHtml(res.formName)}` : ''}</span><span class="band-chip">${escapeHtml(res.bandLabel)}</span></div>
         <div class="res-readout ${scanned ? 'known' : 'masked'}">
-          <span class="res-label">POWER</span>
-          <strong class="res-num">${scanned ? formatResonance(res.displayed) : '????'}</strong>
-          <span class="muted">${scanned ? `${outputLabel(c.output)} ${Math.round(c.output * 100)}%` : 'not scanned'}</span>
+          <span class="res-label">PL</span>
+          <strong class="res-num">${scanned ? formatPL(res.powerLevel) : '????'}</strong>
+          <span class="muted">${scanned ? `×${res.formMultiplier} · ${outputLabel(c.output)} ${Math.round(c.output * 100)}%` : 'not scanned'}</span>
         </div>
         <div class="bars">
           <div class="bar hp"><i style="width:${hp}%"></i></div>
@@ -404,7 +461,7 @@ function renderCombat(state: AppState): string {
       : '';
 
   const ascendedClass = player.ascended || player.output >= 0.9 ? ' ascended' : '';
-  const playerRes = combatantResonance(player);
+  const playerRes = combatantPower(player);
   const foe = combat.combatants.find((c) => c.id === selectedTarget);
   const gapText = foe ? powerGapFlavor(player.powerBand, foe.powerBand) : '';
   const whoseTurn = active.isPlayer
@@ -432,11 +489,11 @@ function renderCombat(state: AppState): string {
           </div>
           <div class="scanner-bar">
             <div>
-              <span class="res-label">YOUR POWER READING</span>
-              <div class="res-hero">${formatResonance(playerRes.displayed)}</div>
-              <div class="muted">${playerRes.bandLabel} class · Output ${outputLabel(player.output)} ${Math.round(player.output * 100)}% · ${BAND_SCOPE[player.powerBand]}</div>
+              <span class="res-label">POWER LEVEL</span>
+              <div class="res-hero">${formatPL(playerRes.powerLevel)}</div>
+              <div class="muted">${playerRes.formName} ×${playerRes.formMultiplier} · ${outputLabel(player.output)} ${Math.round(player.output * 100)}% · ${playerRes.bandLabel}</div>
             </div>
-            <div class="band-track">${bandTrack(player.powerBand)
+            <div class="band-track">${bandTrack(playerRes.band)
               .map(
                 (b) =>
                   `<span class="band-step ${b.reached ? 'reached' : ''} ${b.active ? 'active' : ''}">${escapeHtml(b.label)}</span>`,
@@ -552,11 +609,24 @@ function renderSheet(state: AppState): string {
   if (!state.save) return renderTitle(state);
   const p = state.save.player;
   const d = playerDerived(p);
-  const res = playerResonance(p, {
-    output: 0.6,
-    ascended: !!state.save.flags['Ascension.TemperedWake'] || p.ascensionUnlocked,
+  const held = playerPower(p, { output: 0.6, formId: p.formId ?? 'base' });
+  const open = playerPower(p, {
+    output: 1,
+    formId: p.formId && p.formId !== 'base' ? p.formId : 'tempered_wake',
+    ascended: true,
   });
-  const open = playerResonance(p, { output: 1, ascended: true });
+  const battle = held.stats;
+  const battleBoxes = (Object.keys(STAT_LABELS) as (keyof BattleStats)[])
+    .map((k) => {
+      const trained = p.trainedStats?.[k] ?? 0;
+      return `<div class="stat-box attr-bar">
+        <span class="muted">${STAT_LABELS[k]}</span>
+        <b>${battle[k]}</b>
+        <span class="mod">+${trained} train</span>
+        <div class="bar attr"><i style="width:${Math.min(100, battle[k] / 4)}%"></i></div>
+      </div>`;
+    })
+    .join('');
   const attrs = attributeBars(p.attributes)
     .map(
       (a) => `<div class="stat-box attr-bar">
@@ -575,45 +645,57 @@ function renderSheet(state: AppState): string {
     })
     .join('') || '<p class="muted">No bonds recorded yet.</p>';
 
+  const formList = Object.values(FORMS)
+    .map(
+      (f) =>
+        `<div class="bench ${held.formId === f.id ? 'beat' : ''}"><span>${escapeHtml(f.name)}</span><strong>×${f.multiplier}</strong></div>`,
+    )
+    .join('');
+
   const benches = RESONANCE_BENCHMARKS.map(
     (b) =>
-      `<div class="bench ${res.displayed >= b.value ? 'beat' : ''}"><span>${escapeHtml(b.name)}</span><strong>${formatResonance(b.value)}</strong></div>`,
+      `<div class="bench ${held.powerLevel >= b.value ? 'beat' : ''}"><span>${escapeHtml(b.name)}</span><strong>${formatPL(b.value)}</strong></div>`,
   ).join('');
 
   return shell(
     `<div class="sheet-layout">
       <div class="panel aura-panel">
-        <img src="./refs/ref-power-surge.png" alt="Flux power surge reference" />
+        <img src="./refs/ref-power-surge.png" alt="Power surge" />
         <div class="scanner-bar compact">
-            <span class="res-label">POWER READING (held back)</span>
-          <div class="res-hero">${formatResonance(res.displayed)}</div>
-          <div class="muted">${res.bandLabel} class · Base ${res.coreScore} × band ${res.scaleFactor} × form ${res.formFactor.toFixed(1)}</div>
-          <div class="res-open">All-out estimate: <strong>${formatResonance(open.displayed)}</strong></div>
+          <span class="res-label">POWER LEVEL</span>
+          <div class="res-hero">${formatPL(held.powerLevel)}</div>
+          <div class="muted">${held.formName} ×${held.formMultiplier} · stats ${held.statTotal} · anger ×${held.angerMult.toFixed(2)}</div>
+          <div class="res-open">All-out / transformed: <strong>${formatPL(open.powerLevel)}</strong></div>
         </div>
       </div>
       <div class="panel">
         <div class="scene-head"><h2>${escapeHtml(p.name)}</h2><button data-action="close-sheet">Close</button></div>
         <p class="muted">${ORIGINS[p.origin].name} · ${DISCIPLINES[p.discipline].name} · ${p.convictions.map((c) => CONVICTIONS[c].name).join(' / ')}</p>
-        <div class="band-track">${bandTrack(p.powerBand)
+        <p class="muted">BYOND-style: every battle stat feeds one Power Level, then forms multiply it.</p>
+        <div class="band-track">${bandTrack(held.band)
           .map(
             (b) =>
               `<span class="band-step ${b.reached ? 'reached' : ''} ${b.active ? 'active' : ''}">${escapeHtml(b.label)}</span>`,
           )
           .join('')}</div>
-        <p class="muted">${BAND_SCOPE[p.powerBand]}</p>
         <div class="statline resources" style="margin:0.6rem 0 1rem">
-          <span>Health ${d.vitality}</span><span>Energy ${d.flux}</span><span>Defense ${d.guard}</span><span>Stun limit ${d.stagger}</span><span>Resolve ${p.resolve}</span><span>Level ${p.level}</span>
+          <span>Health ${d.vitality}</span><span>Energy ${d.flux}</span><span>Defense ${d.guard}</span><span>Stun ${d.stagger}</span><span>Resolve ${p.resolve}</span><span>Lv ${p.level}</span>
         </div>
-        <h3>Stats</h3>
+        <h3>Battle Stats → Power Level</h3>
+        <div class="sheet-grid">${battleBoxes}</div>
+        <h3>Form Multipliers</h3>
+        <div class="bench-list">${formList}</div>
+        <h3>Dice Attributes</h3>
         <div class="sheet-grid">${attrs}</div>
-        <h3>Known Power Benchmarks</h3>
+        <h3>Scanner Benchmarks</h3>
         <div class="bench-list">${benches}</div>
-        <h3>Techniques</h3>
+        <h3>Moves</h3>
         <p>${p.techniques.map((t) => TECHNIQUES[t]?.name ?? t).join(' · ')}</p>
         <h3>Bonds</h3>
         ${bonds}
-        <h3>Key flags</h3>
-        <p class="muted">${Object.keys(state.save.flags).slice(0, 18).join(' · ') || 'None yet'}</p>
+        <div class="actions" style="margin-top:1rem">
+          <button class="primary" data-action="open-story-ai">Story AI — train & grind</button>
+        </div>
       </div>
     </div>`,
     state,

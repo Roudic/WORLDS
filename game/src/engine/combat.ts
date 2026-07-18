@@ -8,12 +8,8 @@ import {
   applyPartial,
 } from './attributes';
 import { damageRoll, isSuccess, makeCheck, modifier } from './dice';
-import {
-  combatantResonance,
-  formatResonance,
-  outputLabel,
-  powerGapFlavor,
-} from './resonance';
+import { outputLabel, powerGapFlavor } from './resonance';
+import { combatantPower, formatPL, powerDamageMult } from './power';
 import type {
   AscensionDef,
   Combatant,
@@ -375,7 +371,10 @@ export function useTechnique(
   const dmgBonus = modifier(attr) + (actor.ascended ? 3 : 0);
   const dmg = damageRoll(tech.damageDice, tech.damageSides, dmgBonus);
   const outputMult = 0.55 + actor.output * 0.9;
-  let total = Math.max(1, Math.round(dmg.total * band.damageMult * outputMult));
+  const atkPL = combatantPower(actor).powerLevel;
+  const defPL = combatantPower(target).powerLevel;
+  const plMult = powerDamageMult(atkPL, defPL);
+  let total = Math.max(1, Math.round(dmg.total * band.damageMult * outputMult * plMult));
   if (roll.outcomeTier === 'strongSuccess') total = Math.round(total * 1.25);
   if (roll.outcomeTier === 'exceptionalSuccess') total = Math.round(total * 1.5);
 
@@ -391,7 +390,7 @@ export function useTechnique(
 
   pushLog(
     next,
-    `${actor.name} hits ${target.name} with ${tech.name} for ${total} damage (Stagger +${tech.impact}). ${roll.narrative}`,
+    `${actor.name} hits ${target.name} with ${tech.name} for ${total} damage (PL ${formatPL(atkPL)} vs ${formatPL(defPL)}, ×${plMult.toFixed(2)}). ${roll.narrative}`,
     'attack',
   );
   if (roll.riftEvent) {
@@ -499,16 +498,16 @@ export function scanResonance(
   const target = get(next, targetId);
   if (!actor.alive || next.finished) return next;
   if (actor.flux < 1) {
-    pushLog(next, `${actor.name} needs Flux to run a Resonance scan.`, 'system');
+    pushLog(next, `${actor.name} needs Energy to run a power scan.`, 'system');
     return next;
   }
   actor.flux -= 1;
-  const reading = combatantResonance(target);
+  const reading = combatantPower(target);
   next.tags = Array.from(new Set([...next.tags, `scanned:${target.id}`]));
-  next.tags.push(`res:${target.id}:${reading.displayed}`);
+  next.tags.push(`res:${target.id}:${reading.powerLevel}`);
   pushLog(
     next,
-    `SCAN → ${target.name}: Power ${formatResonance(reading.displayed)} · ${reading.bandLabel} class · ${outputLabel(target.output)} (${Math.round(target.output * 100)}%). ${powerGapFlavor(actor.powerBand, target.powerBand)}`,
+    `SCAN → ${target.name}: PL ${formatPL(reading.powerLevel)} · ${reading.formName} ×${reading.formMultiplier} · ${outputLabel(target.output)} (${Math.round(target.output * 100)}%). ${powerGapFlavor(actor.powerBand, target.powerBand)}`,
     'system',
   );
   if (actor.attributes.intellect >= 13) {
@@ -553,10 +552,10 @@ export function activateAscension(
   actor.techniques = Array.from(new Set([...actor.techniques, ...def.grantedTechniqueIds]));
   actor.output = 1;
   actor.statuses = Array.from(new Set([...actor.statuses, 'aura']));
-  const surge = combatantResonance(actor);
+  const surge = combatantPower(actor);
   pushLog(
     next,
-    `POWER SURGE → ${formatResonance(surge.displayed)} (${surge.bandLabel} class)`,
+    `TRANSFORM ×${def.powerMultiplier} → Power Level ${formatPL(surge.powerLevel)} (${surge.bandLabel})`,
     'ascend',
   );
 

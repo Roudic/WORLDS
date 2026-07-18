@@ -97,6 +97,8 @@ export interface AscensionDef {
   description: string;
   source: 'tempered' | 'symbiotic' | 'forged' | 'covenant' | 'catalytic' | 'riftborn';
   powerBandShift: number;
+  /** BYOND-style Power Level multiplier while transformed */
+  powerMultiplier: number;
   attributeBonus: Partial<Attributes>;
   fluxUpkeep: number;
   pressureGain: number;
@@ -201,6 +203,16 @@ export interface PlayerBuild {
   convictions: [ConvictionId, ConvictionId];
   motivation: string;
   attributes: Attributes;
+  /** Extra points from training (BYOND-style grind) */
+  trainedStats?: Partial<{
+    strength: number;
+    endurance: number;
+    speed: number;
+    resistance: number;
+    offense: number;
+    defense: number;
+    force: number;
+  }>;
   techniques: string[];
   level: number;
   resolve: number;
@@ -208,6 +220,8 @@ export interface PlayerBuild {
   ascensionUnlocked: boolean;
   ascensionMastery: number;
   catalystReady: boolean;
+  /** Active transform form id */
+  formId?: 'base' | 'tempered_wake' | 'tempered_master' | 'rift_sync' | 'mythic_wake';
 }
 
 export interface Relationship {
@@ -222,8 +236,32 @@ export interface GameFlags {
   [key: string]: boolean | number | string;
 }
 
+export interface AiBeat {
+  id: string;
+  title: string;
+  location: string;
+  body: string;
+  choices: {
+    id: string;
+    label: string;
+    hint?: string;
+    kind:
+      | 'train'
+      | 'spar'
+      | 'story'
+      | 'meditate'
+      | 'transform'
+      | 'rival'
+      | 'continue'
+      | 'dice';
+    stat?: string;
+    dc?: number;
+    attribute?: AttributeId;
+  }[];
+}
+
 export interface SaveGame {
-  version: 1;
+  version: 1 | 2;
   player: PlayerBuild;
   relationships: Record<string, Relationship>;
   flags: GameFlags;
@@ -232,4 +270,8 @@ export interface SaveGame {
   hubUnlocked: string[];
   chapter: number;
   log: string[];
+  /** Live Story AI beat (procedural director) */
+  aiBeat?: AiBeat | null;
+  storySeed?: number;
+  trainCount?: number;
 }

@@ -54,6 +54,15 @@ export const SCENES: Record<string, StoryScene> = {
 The Trials recruitment booth is crowded. A clerk with three different accents stacked in one throat asks why you're here — and whether you can prove you won't shatter the arena.`,
     choices: [
       {
+        id: 'open_ai_early',
+        label: 'Skip booth — enter Story AI grind',
+        hint: 'Train stats & Power Level first (procedural)',
+        effects: {
+          setFlags: { 'Ai.Open': true, 'Choice.Trials.Entry': 'ai' },
+          goTo: 'ai_runtime',
+        },
+      },
+      {
         id: 'persuade_entry',
         label: 'Persuade your way onto the roster',
         hint: 'Presence check',
@@ -315,9 +324,11 @@ A Catalyst settles behind your sternum: Tempered Wake, waiting.`,
     chapter: 2,
     title: 'The Trials',
     location: 'Crossfall Arena',
-    body: `The arena opens like a throat. Crowds braid through suspended stands. Across the sand, Vexa Thorn rolls her neck — Resonance loud enough to taste.
+    body: `The arena opens like a throat. Crowds braid through suspended stands. Across the sand, Vexa Thorn rolls her neck — her Power Level loud enough to taste.
 
-"Strength protects a joined world," she calls. "Everything else is decoration."`,
+"Strength protects a joined world," she calls. "Everything else is decoration."
+
+A side lane flickers: the Story AI Director offers free roam — train stats, raise Power Level, transform drills — old-school grind between scripted beats.`,
     choices: [
       {
         id: 'opening_bout',
@@ -327,7 +338,25 @@ A Catalyst settles behind your sternum: Tempered Wake, waiting.`,
           goTo: 'after_opening',
         },
       },
+      {
+        id: 'open_story_ai',
+        label: 'Open Story AI (train / grind / missions)',
+        hint: 'Procedural director — dice + Power Level',
+        effects: {
+          setFlags: { 'Ai.Open': true },
+          goTo: 'ai_runtime',
+        },
+      },
     ],
+  },
+
+  ai_runtime: {
+    id: 'ai_runtime',
+    chapter: 2,
+    title: 'Story AI',
+    location: 'Crossfall · Living Director',
+    body: `The Director is compiling your next beat…`,
+    choices: [],
   },
 
   after_opening: {
