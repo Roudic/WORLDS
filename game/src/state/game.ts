@@ -6,10 +6,13 @@ import { isSuccess, makeCheck } from '../engine/dice';
 import type {
   ConvictionId,
   EndingId,
+  FluxBias,
   PlayerBuild,
   Relationship,
   SaveGame,
   ScreenId,
+  WorldFocus,
+  WorldTone,
 } from '../engine/types';
 import {
   COMPANIONS,
@@ -33,9 +36,22 @@ import {
   useTechnique,
   type CombatState,
 } from '../engine/combat';
+import {
+  activeWorld,
+  createWorld,
+  raiseCeiling,
+  setWorldFocus,
+} from '../engine/worlds';
 import { applyAiChoice, generateAiHub, openStoryAi } from '../story/director';
+import { resolveEventChoice, rollWorldEvent } from '../story/events';
 
 const SAVE_KEY = 'riftwake.save.v2';
+
+export interface WorldDraft {
+  name: string;
+  tone: WorldTone;
+  fluxBias: FluxBias;
+}
 
 export interface AppState {
   screen: ScreenId;
@@ -44,6 +60,7 @@ export interface AppState {
     convictionA?: ConvictionId;
     convictionB?: ConvictionId;
   };
+  worldDraft: WorldDraft;
   save: SaveGame | null;
   combat: CombatState | null;
   returnSceneId: string | null;
@@ -71,7 +88,7 @@ export function createNewSave(player: PlayerBuild): SaveGame {
     maelin: { ...emptyRelationship(), approval: 1, trust: 1 },
   };
   return {
-    version: 2,
+    version: 3,
     player,
     relationships,
     flags: {},
@@ -79,10 +96,14 @@ export function createNewSave(player: PlayerBuild): SaveGame {
     partyIds: [],
     hubUnlocked: ['gate', 'clinic', 'arena'],
     chapter: 1,
-    log: ['You arrive in Crossfall for the Trials.'],
+    log: ['Campaign begun — forge a world, then chase random events that shape who you become.'],
     aiBeat: null,
     storySeed: Date.now() % 1_000_000,
     trainCount: 0,
+    worlds: [],
+    activeWorldId: null,
+    currentEvent: null,
+    developmentLog: [],
   };
 }
 
@@ -98,6 +119,11 @@ export function initialAppState(): AppState {
       convictionA: 'mercy',
       convictionB: 'truth',
     },
+    worldDraft: {
+      name: '',
+      tone: 'discovery',
+      fluxBias: 'pulse',
+    },
     save: loaded,
     combat: null,
     returnSceneId: null,
@@ -107,24 +133,36 @@ export function initialAppState(): AppState {
   };
 }
 
+function migrateSave(save: SaveGame): SaveGame {
+  save.version = 3;
+  save.player.trainedStats = save.player.trainedStats ?? {};
+  save.player.formId = save.player.formId ?? 'base';
+  save.trainCount = save.trainCount ?? 0;
+  save.storySeed = save.storySeed ?? Date.now() % 1_000_000;
+  save.worlds = save.worlds ?? [];
+  save.activeWorldId = save.activeWorldId ?? save.worlds[0]?.id ?? null;
+  save.currentEvent = save.currentEvent ?? null;
+  save.developmentLog = save.developmentLog ?? [];
+  if (save.sceneId === 'ai_runtime' && !save.aiBeat) {
+    save.aiBeat = generateAiHub(save);
+  }
+  return save;
+}
+
 export function loadSave(): SaveGame | null {
   try {
     const raw =
       localStorage.getItem(SAVE_KEY) ?? localStorage.getItem('riftwake.save.v1');
     if (!raw) return null;
-    const save = JSON.parse(raw) as SaveGame;
-    save.version = 2;
-    save.player.trainedStats = save.player.trainedStats ?? {};
-    save.player.formId = save.player.formId ?? 'base';
-    save.trainCount = save.trainCount ?? 0;
-    save.storySeed = save.storySeed ?? Date.now() % 1_000_000;
-    if (save.sceneId === 'ai_runtime' && !save.aiBeat) {
-      save.aiBeat = generateAiHub(save);
-    }
-    return save;
+    return migrateSave(JSON.parse(raw) as SaveGame);
   } catch {
     return null;
   }
+}
+
+function patchActiveWorld(save: SaveGame, world: NonNullable<ReturnType<typeof activeWorld>>): SaveGame {
+  const worlds = (save.worlds ?? []).map((w) => (w.id === world.id ? world : w));
+  return { ...save, worlds, activeWorldId: world.id };
 }
 
 export function persistSave(save: SaveGame) {
@@ -383,20 +421,133 @@ export function reduce(state: AppState, action: Action): AppState {
       return {
         ...state,
         save,
-        screen: 'scene',
+        screen: 'worlds',
         endingId: null,
         lastDiceText: null,
-        toast: null,
+        toast: 'Create a world — then roll random events that grow you with reasons.',
       };
     }
     case 'CONTINUE': {
       const save = loadSave();
       if (!save) return { ...state, toast: 'No save found.' };
+      if (save.flags['Ending.Id']) {
+        return {
+          ...state,
+          save,
+          screen: 'ending',
+          endingId: save.flags['Ending.Id'] as EndingId,
+        };
+      }
+      const screen: ScreenId = save.currentEvent
+        ? 'event'
+        : (save.worlds?.length ?? 0) > 0 || save.version === 3
+          ? 'worlds'
+          : 'scene';
+      return { ...state, save, screen, endingId: null };
+    }
+    case 'SET_WORLD_DRAFT':
+      return { ...state, worldDraft: { ...state.worldDraft, ...action.patch } };
+    case 'OPEN_WORLDS':
+      return { ...state, screen: 'worlds', toast: null };
+    case 'OPEN_WORLD_CREATE':
+      return { ...state, screen: 'world_create', toast: null };
+    case 'CREATE_WORLD': {
+      if (!state.save) return state;
+      const world = createWorld({
+        name: state.worldDraft.name,
+        tone: state.worldDraft.tone,
+        fluxBias: state.worldDraft.fluxBias,
+      });
+      const save: SaveGame = {
+        ...state.save,
+        worlds: [...(state.save.worlds ?? []), world],
+        activeWorldId: world.id,
+        log: [
+          ...state.save.log,
+          `World forged: ${world.name} (${world.tone}, ceiling ${world.powerCeiling}).`,
+        ],
+      };
+      persistSave(save);
       return {
         ...state,
         save,
-        screen: save.flags['Ending.Id'] ? 'ending' : 'scene',
-        endingId: (save.flags['Ending.Id'] as EndingId) ?? null,
+        screen: 'worlds',
+        toast: `${world.name} is live — set focus, raise the ceiling, or roll an event.`,
+      };
+    }
+    case 'SELECT_WORLD': {
+      if (!state.save) return state;
+      const exists = (state.save.worlds ?? []).some((w) => w.id === action.worldId);
+      if (!exists) return { ...state, toast: 'World not found.' };
+      const save = { ...state.save, activeWorldId: action.worldId, currentEvent: null };
+      persistSave(save);
+      return { ...state, save, screen: 'worlds', toast: 'Active world switched.' };
+    }
+    case 'SET_WORLD_FOCUS': {
+      if (!state.save) return state;
+      const world = activeWorld(state.save);
+      if (!world) return { ...state, toast: 'Create a world first.' };
+      const save = patchActiveWorld(state.save, setWorldFocus(world, action.focus));
+      persistSave(save);
+      return { ...state, save, toast: `World focus → ${action.focus}` };
+    }
+    case 'RAISE_CEILING': {
+      if (!state.save) return state;
+      const world = activeWorld(state.save);
+      if (!world) return { ...state, toast: 'Create a world first.' };
+      const raised = raiseCeiling(world);
+      const save = patchActiveWorld(state.save, raised);
+      persistSave(save);
+      return {
+        ...state,
+        save,
+        toast: `Power ceiling raised to ${raised.powerCeiling}.`,
+      };
+    }
+    case 'ROLL_EVENT': {
+      if (!state.save) return state;
+      const world = activeWorld(state.save);
+      if (!world) return { ...state, toast: 'Create a world first.', screen: 'world_create' };
+      const event = rollWorldEvent(state.save, world);
+      const save = { ...state.save, currentEvent: event };
+      persistSave(save);
+      return {
+        ...state,
+        save,
+        screen: 'event',
+        lastDiceText: null,
+        toast: 'A random event lands — your choice writes the reason for the gain.',
+      };
+    }
+    case 'RESOLVE_EVENT': {
+      if (!state.save || !state.save.currentEvent) return state;
+      const world = activeWorld(state.save);
+      if (!world) return { ...state, toast: 'No active world.', screen: 'worlds' };
+      const result = resolveEventChoice(
+        state.save,
+        world,
+        state.save.currentEvent,
+        action.choiceId,
+      );
+      const save = patchActiveWorld(
+        { ...result.save, currentEvent: null },
+        result.world,
+      );
+      persistSave(save);
+      return {
+        ...state,
+        save,
+        screen: 'worlds',
+        lastDiceText: result.diceText,
+        toast: result.toast,
+      };
+    }
+    case 'OPEN_LEGACY_TRIALS': {
+      if (!state.save) return state;
+      return {
+        ...state,
+        screen: 'scene',
+        toast: 'Legacy Crossfall Trials — optional authored path.',
       };
     }
     case 'CHOICE': {
@@ -607,7 +758,16 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'OPEN_SHEET':
       return { ...state, screen: 'sheet' };
     case 'CLOSE_SHEET':
-      return { ...state, screen: state.combat ? 'combat' : 'scene' };
+      return {
+        ...state,
+        screen: state.combat
+          ? 'combat'
+          : state.save?.currentEvent
+            ? 'event'
+            : (state.save?.worlds?.length ?? 0) > 0
+              ? 'worlds'
+              : 'scene',
+      };
     case 'DELETE_SAVE':
       clearSave();
       return { ...initialAppState(), toast: 'Save cleared.' };
@@ -669,6 +829,7 @@ function finishCombat(state: AppState): AppState {
 export type Action =
   | { type: 'GOTO'; screen: ScreenId }
   | { type: 'SET_DRAFT'; patch: Partial<AppState['draft']> }
+  | { type: 'SET_WORLD_DRAFT'; patch: Partial<WorldDraft> }
   | { type: 'START_NEW' }
   | { type: 'CONTINUE' }
   | { type: 'CHOICE'; choiceId: string }
@@ -687,6 +848,15 @@ export type Action =
   | { type: 'CLASH_CHOICE'; choice: string }
   | { type: 'AI_CHOICE'; choiceId: string }
   | { type: 'OPEN_STORY_AI' }
+  | { type: 'OPEN_WORLDS' }
+  | { type: 'OPEN_WORLD_CREATE' }
+  | { type: 'CREATE_WORLD' }
+  | { type: 'SELECT_WORLD'; worldId: string }
+  | { type: 'SET_WORLD_FOCUS'; focus: WorldFocus }
+  | { type: 'RAISE_CEILING' }
+  | { type: 'ROLL_EVENT' }
+  | { type: 'RESOLVE_EVENT'; choiceId: string }
+  | { type: 'OPEN_LEGACY_TRIALS' }
   | { type: 'OPEN_SHEET' }
   | { type: 'CLOSE_SHEET' }
   | { type: 'DELETE_SAVE' }
@@ -708,4 +878,5 @@ export {
   COMPANIONS,
   SCENES,
   playerDerived,
+  activeWorld,
 };

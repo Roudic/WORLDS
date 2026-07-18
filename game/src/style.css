@@ -1128,3 +1128,108 @@ button:disabled {
   flex: 1;
   min-width: 12rem;
 }
+
+.worlds-layout {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+@media (min-width: 900px) {
+  .worlds-layout {
+    grid-template-columns: 1fr 1.2fr;
+  }
+
+  .worlds-layout > .panel:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.world-manage .stat-row,
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin: 0.75rem 0;
+  color: var(--muted);
+}
+
+.stat-row strong {
+  color: var(--accent);
+  font-family: var(--font-display);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.chip-row button {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.chip-row button.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(110, 231, 197, 0.1);
+}
+
+.log-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.dev-log li {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.dev-log .meta {
+  color: var(--accent-2);
+  font-size: 0.85rem;
+}
+
+.panel.narrow {
+  max-width: 640px;
+  margin: 1rem auto;
+}
+
+.event-panel {
+  max-width: 720px;
+  margin: 1rem auto;
+}
+
+.choice-stack {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.choice-stack button {
+  text-align: left;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem 1rem;
+}
+
+.choice-stack .hint {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.dice-line {
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(110, 231, 197, 0.06);
+  color: var(--ink);
+  font-size: 0.92rem;
+}

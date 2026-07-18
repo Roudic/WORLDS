@@ -179,7 +179,10 @@ export type ScreenId =
   | 'clash'
   | 'ending'
   | 'sheet'
-  | 'gallery';
+  | 'gallery'
+  | 'worlds'
+  | 'world_create'
+  | 'event';
 
 export interface CompanionDef {
   id: string;
@@ -260,8 +263,68 @@ export interface AiBeat {
   }[];
 }
 
+export type FluxBias = 'pulse' | 'aether' | 'lumen' | 'riftforce' | 'hybrid';
+export type WorldTone = 'war' | 'intrigue' | 'discovery' | 'survival' | 'ascension' | 'politics';
+export type WorldFocus = 'stabilize' | 'empower' | 'story' | 'balance';
+
+export interface ManagedWorld {
+  id: string;
+  name: string;
+  seed: number;
+  era: string;
+  fluxBias: FluxBias;
+  tone: WorldTone;
+  /** Soft PL ceiling — events & threats scale under this band */
+  powerCeiling: number;
+  stability: number;
+  threatLevel: number;
+  storyArc: string;
+  storyProgress: number;
+  factions: string[];
+  history: string[];
+  eventCount: number;
+  focus: WorldFocus;
+  createdAt: number;
+}
+
+export interface WorldEventChoice {
+  id: string;
+  label: string;
+  hint?: string;
+  attribute?: AttributeId;
+  dc?: number;
+  lean?: Array<
+    | 'strength'
+    | 'endurance'
+    | 'speed'
+    | 'resistance'
+    | 'offense'
+    | 'defense'
+    | 'force'
+  >;
+  convictionTouch?: string;
+}
+
+export interface WorldEvent {
+  id: string;
+  title: string;
+  tag: string;
+  body: string;
+  choices: WorldEventChoice[];
+}
+
+export interface DevEntry {
+  id: string;
+  at: number;
+  worldId: string;
+  worldName: string;
+  eventTitle: string;
+  reason: string;
+  gains: string[];
+}
+
 export interface SaveGame {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   player: PlayerBuild;
   relationships: Record<string, Relationship>;
   flags: GameFlags;
@@ -274,4 +337,11 @@ export interface SaveGame {
   aiBeat?: AiBeat | null;
   storySeed?: number;
   trainCount?: number;
+  /** Managed worlds sandbox */
+  worlds?: ManagedWorld[];
+  activeWorldId?: string | null;
+  /** Active random AI event */
+  currentEvent?: WorldEvent | null;
+  /** Character development journal — gains with reasons */
+  developmentLog?: DevEntry[];
 }
