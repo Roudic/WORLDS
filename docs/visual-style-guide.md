@@ -43,8 +43,19 @@ See `visual-refs/ref-flux-types.png`.
 3. Crossfall architecture always shows at least two joined realities in one frame (stone + neon, forest + hull, temple + machine).
 4. Combat FX should telegraph Flux type before raw brightness.
 
+## Power fantasy (Resonance)
+
+Capture explosive martial-energy appeal **without** franchise copies:
+
+- Numeric **Resonance** readouts (scanner / HUD), not “power level” trademark language
+- Output states: Suppressed → Held → Released → Surging → Wide Open
+- Bands: Mortal → Awakened → Ascendant → World-Class → Astral → Sovereign → Mythic
+- Auras = wake geometry + material change, never hair-color gimmicks
+- Extra plates: `ref-power-surge.png`, `ref-resonance-hud.png`
+
 ## Motion notes (UI / cinematics)
 
 - Slow parallax drift on hub skies
 - Clash: three-beat compression (push / flash / resolve)
 - Rift overlays: brief double-exposure, not constant shake
+- Power-up: expanding energy rings + aura pulse on combatants

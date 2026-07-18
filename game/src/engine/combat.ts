@@ -8,6 +8,12 @@ import {
   applyPartial,
 } from './attributes';
 import { damageRoll, isSuccess, makeCheck, modifier } from './dice';
+import {
+  combatantResonance,
+  formatResonance,
+  outputLabel,
+  powerGapFlavor,
+} from './resonance';
 import type {
   AscensionDef,
   Combatant,
@@ -131,11 +137,13 @@ export function makeEnemy(opts: {
   level?: number;
   position?: number;
   aiProfile?: Combatant['aiProfile'];
+  output?: number;
 }): Combatant {
   const level = opts.level ?? 3;
   const grit = opts.attributes.grit;
   const maxV = 24 + modifier(grit) * 5 + level * 3;
   const maxF = 12 + modifier(opts.attributes.control) * 3 + modifier(opts.attributes.will) * 2;
+  const output = opts.output ?? 0.55;
   return {
     id: opts.id,
     name: opts.name,
@@ -153,9 +161,9 @@ export function makeEnemy(opts: {
     pressure: 0,
     resolve: 1,
     powerBand: opts.powerBand ?? 'mortal',
-    output: 0.55,
+    output,
     techniques: opts.techniques,
-    statuses: [],
+    statuses: output >= 0.9 ? ['aura'] : [],
     ascended: false,
     position: opts.position ?? 5,
     alive: true,
@@ -353,7 +361,8 @@ export function useTechnique(
 
   const dmgBonus = modifier(attr) + (actor.ascended ? 3 : 0);
   const dmg = damageRoll(tech.damageDice, tech.damageSides, dmgBonus);
-  let total = Math.max(1, Math.round(dmg.total * band.damageMult));
+  const outputMult = 0.55 + actor.output * 0.9;
+  let total = Math.max(1, Math.round(dmg.total * band.damageMult * outputMult));
   if (roll.outcomeTier === 'strongSuccess') total = Math.round(total * 1.25);
   if (roll.outcomeTier === 'exceptionalSuccess') total = Math.round(total * 1.5);
 
@@ -430,6 +439,73 @@ function applyRiftSideEffect(
   }
 }
 
+export function powerUp(state: CombatState, actorId: string): CombatState {
+  const next = structuredClone(state) as CombatState;
+  const actor = get(next, actorId);
+  if (!actor.alive || next.finished) return next;
+  const before = actor.output;
+  actor.output = Math.min(1, actor.output + 0.2);
+  actor.pressure += 1;
+  actor.flux = Math.max(0, actor.flux - 1);
+  if (actor.output >= 0.95) {
+    actor.statuses = Array.from(new Set([...actor.statuses, 'aura']));
+  }
+  pushLog(
+    next,
+    `${actor.name} drives Flux wide open — output ${(before * 100).toFixed(0)}% → ${(actor.output * 100).toFixed(0)}%. Resonance spikes.`,
+    'ascend',
+  );
+  endTurn(next);
+  return next;
+}
+
+export function suppressOutput(state: CombatState, actorId: string): CombatState {
+  const next = structuredClone(state) as CombatState;
+  const actor = get(next, actorId);
+  if (!actor.alive || next.finished) return next;
+  const before = actor.output;
+  actor.output = Math.max(0.2, actor.output - 0.2);
+  actor.statuses = actor.statuses.filter((s) => s !== 'aura');
+  actor.pressure = Math.max(0, actor.pressure - 1);
+  pushLog(
+    next,
+    `${actor.name} clamps their Resonance — output ${(before * 100).toFixed(0)}% → ${(actor.output * 100).toFixed(0)}%.`,
+    'info',
+  );
+  endTurn(next);
+  return next;
+}
+
+export function scanResonance(
+  state: CombatState,
+  actorId: string,
+  targetId: string,
+): CombatState {
+  const next = structuredClone(state) as CombatState;
+  const actor = get(next, actorId);
+  const target = get(next, targetId);
+  if (!actor.alive || next.finished) return next;
+  if (actor.flux < 1) {
+    pushLog(next, `${actor.name} needs Flux to run a Resonance scan.`, 'system');
+    return next;
+  }
+  actor.flux -= 1;
+  const reading = combatantResonance(target);
+  next.tags = Array.from(new Set([...next.tags, `scanned:${target.id}`]));
+  next.tags.push(`res:${target.id}:${reading.displayed}`);
+  pushLog(
+    next,
+    `SCAN → ${target.name}: RES ${formatResonance(reading.displayed)} · ${reading.bandLabel} · Output ${outputLabel(target.output)} (${Math.round(target.output * 100)}%). ${powerGapFlavor(actor.powerBand, target.powerBand)}`,
+    'system',
+  );
+  if (actor.attributes.intellect >= 13) {
+    target.statuses = Array.from(new Set([...target.statuses, 'exposed']));
+    pushLog(next, 'Precision read exposes a structural weakness.', 'info');
+  }
+  endTurn(next);
+  return next;
+}
+
 export function activateAscension(
   state: CombatState,
   actorId: string,
@@ -463,6 +539,13 @@ export function activateAscension(
   actor.pressure += def.pressureGain;
   actor.techniques = Array.from(new Set([...actor.techniques, ...def.grantedTechniqueIds]));
   actor.output = 1;
+  actor.statuses = Array.from(new Set([...actor.statuses, 'aura']));
+  const surge = combatantResonance(actor);
+  pushLog(
+    next,
+    `RESONANCE SURGE → ${formatResonance(surge.displayed)} (${surge.bandLabel})`,
+    'ascend',
+  );
 
   if (isSuccess(control.outcomeTier)) {
     pushLog(next, `${actor.name} awakens ${def.name}. Control holds. ${control.narrative}`, 'ascend');

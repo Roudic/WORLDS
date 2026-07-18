@@ -791,3 +791,235 @@ button:disabled {
   display: grid;
   gap: 0.55rem;
 }
+
+.scanner-bar {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.4rem 0 0.9rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(110, 231, 197, 0.35);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(110, 231, 197, 0.12), rgba(240, 163, 94, 0.08)),
+    rgba(0, 0, 0, 0.28);
+  animation: rise 360ms ease both;
+}
+
+.scanner-bar.compact {
+  margin-top: 0.75rem;
+}
+
+.res-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.res-hero {
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 5vw, 3.2rem);
+  line-height: 1;
+  color: var(--ink);
+  text-shadow: 0 0 24px rgba(110, 231, 197, 0.35);
+}
+
+.res-open {
+  margin-top: 0.45rem;
+  color: var(--accent-2);
+}
+
+.res-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.7rem;
+  margin: 0.35rem 0 0.15rem;
+}
+
+.res-readout .res-num {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  color: var(--accent);
+}
+
+.res-readout.masked .res-num {
+  color: var(--muted);
+  letter-spacing: 0.12em;
+}
+
+.band-chip {
+  font-size: 0.75rem;
+  border: 1px solid rgba(240, 163, 94, 0.45);
+  color: var(--accent-2);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+}
+
+.band-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.band-step {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  opacity: 0.55;
+}
+
+.band-step.reached {
+  opacity: 1;
+  border-color: rgba(110, 231, 197, 0.35);
+  color: var(--ink);
+}
+
+.band-step.active {
+  background: rgba(110, 231, 197, 0.18);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 16px rgba(110, 231, 197, 0.2);
+}
+
+.bar.output > i {
+  background: linear-gradient(90deg, #f0a35e, #ffe29a);
+}
+
+.bar.attr {
+  margin-top: 0.4rem;
+  height: 6px;
+}
+
+.bar.attr > i {
+  background: linear-gradient(90deg, #6ee7c5, #f0a35e);
+}
+
+.combatant.aura {
+  border-color: rgba(110, 231, 197, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(110, 231, 197, 0.2),
+    0 0 28px rgba(110, 231, 197, 0.18);
+  animation: auraPulse 1.6s ease-in-out infinite;
+}
+
+.combatant.surge {
+  border-color: rgba(240, 163, 94, 0.7);
+  box-shadow:
+    0 0 0 1px rgba(240, 163, 94, 0.25),
+    0 0 36px rgba(240, 163, 94, 0.22);
+}
+
+@keyframes auraPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(110, 231, 197, 0.18),
+      0 0 20px rgba(110, 231, 197, 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(110, 231, 197, 0.35),
+      0 0 34px rgba(110, 231, 197, 0.28);
+  }
+}
+
+.energy-ring {
+  pointer-events: none;
+  position: absolute;
+  inset: 8% 18%;
+  border-radius: 50%;
+  border: 2px solid rgba(110, 231, 197, 0.18);
+  box-shadow:
+    0 0 40px rgba(110, 231, 197, 0.12),
+    inset 0 0 40px rgba(240, 163, 94, 0.08);
+  animation: ringExpand 2.8s ease-out infinite;
+  z-index: 0;
+}
+
+.combat-stage.ascended .energy-ring {
+  border-color: rgba(240, 163, 94, 0.35);
+  animation-duration: 1.6s;
+}
+
+@keyframes ringExpand {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+
+.power-actions {
+  margin: 0.4rem 0 0.9rem;
+}
+
+.sheet-layout {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .sheet-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.aura-panel {
+  padding: 0;
+  overflow: hidden;
+  position: sticky;
+  top: 1rem;
+}
+
+.aura-panel img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+}
+
+.aura-panel .scanner-bar {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.stat-box.attr-bar .mod {
+  color: var(--accent-2);
+  font-size: 0.85rem;
+}
+
+.bench-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.bench {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.bench.beat {
+  border-color: rgba(110, 231, 197, 0.4);
+  color: var(--ink);
+  background: rgba(110, 231, 197, 0.08);
+}
+
+.bench strong {
+  font-family: var(--font-display);
+  color: var(--accent);
+}

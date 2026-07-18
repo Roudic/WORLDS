@@ -238,9 +238,11 @@ She offers to walk the Trials with someone who won't treat mercy as weakness.`,
     chapter: 1,
     title: 'Control Over Output',
     location: "Crossfall — Orr's Courtyard",
-    body: `Maelin Orr watches your Resonance like weather. "Anyone can shout Flux into the air. Few can decide what it becomes."
+    body: `Maelin Orr flicks a palm-scanner toward you. Numbers climb, stutter, settle — your Resonance readout hangs in the air like a challenge.
 
-He offers an optional assessment: dice, restraint, and a Catalyst seed for Breakthrough — if you want the risk.`,
+"Anyone can shout Flux into the air until the stones shake," he says. "Few can decide what it becomes. Power bands are not trophies. They are weather systems you either steer… or drown in."
+
+He offers an optional assessment: dice, restraint, a Catalyst seed for Breakthrough — and a lesson in suppressing or surging your output on command.`,
     choices: [
       {
         id: 'take_assessment',

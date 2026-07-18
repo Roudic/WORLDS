@@ -42,6 +42,18 @@ export const VISUAL_REFS: VisualRef[] = [
     title: 'Companion Line',
     caption: 'Sori, Tamsin, Ivo, Vexa — original silhouettes and body language.',
   },
+  {
+    id: 'surge',
+    src: './refs/ref-power-surge.png',
+    title: 'Resonance Surge',
+    caption: 'Wide-open Flux output — shockwaves, wake geometry, scanner spikes.',
+  },
+  {
+    id: 'hud',
+    src: './refs/ref-resonance-hud.png',
+    title: 'Resonance HUD',
+    caption: 'Power bands, numeric RES readouts, attribute and Flux meters.',
+  },
 ];
 
 /** Scene / chapter → atmospheric plate */

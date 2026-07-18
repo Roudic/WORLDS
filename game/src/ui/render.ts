@@ -1,6 +1,17 @@
 import { TECHNIQUES } from '../data/catalog';
 import { artForCombat, artForScene, VISUAL_REFS } from '../data/visuals';
 import { activeCombatant } from '../engine/combat';
+import {
+  BAND_SCOPE,
+  attributeBars,
+  bandTrack,
+  combatantResonance,
+  formatResonance,
+  outputLabel,
+  playerResonance,
+  powerGapFlavor,
+  RESONANCE_BENCHMARKS,
+} from '../engine/resonance';
 import type { Action, AppState } from '../state/game';
 import {
   COMPANIONS,
@@ -119,6 +130,15 @@ function handleClick(
     case 'combat-talk':
       if (payload) dispatch({ type: 'COMBAT_TALK', targetId: payload, dc: 14 });
       break;
+    case 'power-up':
+      dispatch({ type: 'COMBAT_POWER_UP' });
+      break;
+    case 'suppress':
+      dispatch({ type: 'COMBAT_SUPPRESS' });
+      break;
+    case 'scan':
+      if (payload) dispatch({ type: 'COMBAT_SCAN', targetId: payload });
+      break;
     case 'clash':
       if (payload) dispatch({ type: 'CLASH_CHOICE', choice: payload });
       break;
@@ -130,13 +150,14 @@ function handleClick(
 
 function shell(content: string, state: AppState, opts?: { showNav?: boolean }) {
   const save = state.save;
+  const navRes = save ? formatResonance(playerResonance(save.player).displayed) : '';
   const nav =
     opts?.showNav && save
       ? `<div class="topbar">
           <div class="brand">Project <span>Riftwake</span></div>
           <div class="actions">
-            <span class="meta">Ch.${save.chapter} · ${escapeHtml(save.player.name)} · Resolve ${save.player.resolve}</span>
-            <button data-action="open-sheet">Character</button>
+            <span class="meta">Ch.${save.chapter} · ${escapeHtml(save.player.name)} · RES <strong>${navRes}</strong> · Resolve ${save.player.resolve}</span>
+            <button data-action="open-sheet">Power Sheet</button>
           </div>
         </div>`
       : '';
@@ -314,12 +335,22 @@ function renderCombat(state: AppState): string {
       const hp = Math.round((c.vitality / c.maxVitality) * 100);
       const flux = Math.round((c.flux / Math.max(1, c.maxFlux)) * 100);
       const st = Math.round((c.stagger / Math.max(1, c.maxStagger)) * 100);
-      return `<div class="combatant ${c.id === active.id ? 'active' : ''} ${c.alive ? '' : 'down'}">
-        <div class="name"><span>${escapeHtml(c.name)}${c.ascended ? ' ✦' : ''}</span><span class="muted">${c.powerBand}</span></div>
+      const scanned = combat.tags.includes(`scanned:${c.id}`) || c.isPlayer || c.isCompanion;
+      const res = combatantResonance(c);
+      const aura = c.ascended || c.output >= 0.9 || c.statuses.includes('aura') ? ' aura' : '';
+      const surge = c.output >= 0.85 ? ' surge' : '';
+      return `<div class="combatant${aura}${surge} ${c.id === active.id ? 'active' : ''} ${c.alive ? '' : 'down'}">
+        <div class="name"><span>${escapeHtml(c.name)}${c.ascended ? ' ✦ ASCENDED' : ''}</span><span class="band-chip">${escapeHtml(res.bandLabel)}</span></div>
+        <div class="res-readout ${scanned ? 'known' : 'masked'}">
+          <span class="res-label">RES</span>
+          <strong class="res-num">${scanned ? formatResonance(res.displayed) : '????'}</strong>
+          <span class="muted">${scanned ? `${outputLabel(c.output)} ${Math.round(c.output * 100)}%` : 'unscanned'}</span>
+        </div>
         <div class="bars">
           <div class="bar hp"><i style="width:${hp}%"></i></div>
           <div class="bar flux"><i style="width:${flux}%"></i></div>
           <div class="bar stagger"><i style="width:${st}%"></i></div>
+          <div class="bar output"><i style="width:${Math.round(c.output * 100)}%"></i></div>
         </div>
         <div class="statline">
           <span>VIT ${c.vitality}/${c.maxVitality}</span>
@@ -370,32 +401,53 @@ function renderCombat(state: AppState): string {
     (state.save.player.catalystReady ||
       state.save.flags['Catalyst.TemperedWake'] ||
       player.pressure >= 6)
-      ? `<button data-action="ascend">Ascension · Tempered Wake</button>`
+      ? `<button class="primary" data-action="ascend">Ascension · Tempered Wake</button>`
       : '';
 
   const backdrop = artForCombat(combat.id);
-  const ascendedClass = player.ascended ? ' ascended' : '';
+  const ascendedClass = player.ascended || player.output >= 0.9 ? ' ascended' : '';
+  const playerRes = combatantResonance(player);
+  const foe = combat.combatants.find((c) => c.id === selectedTarget);
+  const gapText = foe ? powerGapFlavor(player.powerBand, foe.powerBand) : '';
 
   return shell(
     `<div class="combat-stage${ascendedClass}" style="--combat-art:url('${backdrop}')">
       <div class="combat-backdrop" aria-hidden="true"></div>
+      <div class="energy-ring" aria-hidden="true"></div>
       <div class="panel combat-panel">
         <div class="scene-head">
           <h2>${escapeHtml(combat.name)}</h2>
           <span class="meta">Round ${combat.round} · ${escapeHtml(combat.objective.label)}</span>
         </div>
-        <p class="muted">${escapeHtml(combat.description)}</p>
+        <div class="scanner-bar">
+          <div>
+            <span class="res-label">YOUR RESONANCE</span>
+            <div class="res-hero">${formatResonance(playerRes.displayed)}</div>
+            <div class="muted">${playerRes.bandLabel} · ${outputLabel(player.output)} ${Math.round(player.output * 100)}% · ${BAND_SCOPE[player.powerBand]}</div>
+          </div>
+          <div class="band-track">${bandTrack(player.powerBand)
+            .map(
+              (b) =>
+                `<span class="band-step ${b.reached ? 'reached' : ''} ${b.active ? 'active' : ''}">${escapeHtml(b.label)}</span>`,
+            )
+            .join('')}</div>
+        </div>
+        <p class="muted">${escapeHtml(combat.description)}${gapText ? ` · ${escapeHtml(gapText)}` : ''}</p>
         <div class="combat-layout">
           <div>
             ${list}
             <h3>Target</h3>
             <div class="target-row">${targets}</div>
-            <h3>Techniques ${canAct ? '' : '<span class="muted">(waiting)</span>'}</h3>
-            <div class="tech-grid">${techs}</div>
-            <div class="actions" style="margin-top:0.8rem">
+            <h3>Energy & Scan ${canAct ? '' : '<span class="muted">(waiting)</span>'}</h3>
+            <div class="actions power-actions">
+              <button ${canAct ? '' : 'disabled'} data-action="power-up">Power Up (+Output)</button>
+              <button ${canAct ? '' : 'disabled'} data-action="suppress">Suppress</button>
+              <button ${canAct && selectedTarget ? '' : 'disabled'} data-action="scan" data-payload="${selectedTarget}">Scan Resonance</button>
               ${ascendBtn}
               ${talkOk && canAct && talkTarget ? `<button data-action="combat-talk" data-payload="${talkTarget}">Combat Conversation</button>` : ''}
             </div>
+            <h3>Techniques</h3>
+            <div class="tech-grid">${techs}</div>
           </div>
           <div>
             <h3>Battle Log</h3>
@@ -488,10 +540,19 @@ function renderSheet(state: AppState): string {
   if (!state.save) return renderTitle(state);
   const p = state.save.player;
   const d = playerDerived(p);
-  const attrs = Object.entries(p.attributes)
+  const res = playerResonance(p, {
+    output: 0.6,
+    ascended: !!state.save.flags['Ascension.TemperedWake'] || p.ascensionUnlocked,
+  });
+  const open = playerResonance(p, { output: 1, ascended: true });
+  const attrs = attributeBars(p.attributes)
     .map(
-      ([k, v]) =>
-        `<div class="stat-box"><span class="muted">${k}</span><b>${v}</b></div>`,
+      (a) => `<div class="stat-box attr-bar">
+        <span class="muted">${a.label}</span>
+        <b>${a.value}</b>
+        <span class="mod">${a.mod >= 0 ? '+' : ''}${a.mod}</span>
+        <div class="bar attr"><i style="width:${Math.min(100, (a.value / 20) * 100)}%"></i></div>
+      </div>`,
     )
     .join('');
   const bonds = Object.entries(state.save.relationships)
@@ -502,21 +563,46 @@ function renderSheet(state: AppState): string {
     })
     .join('') || '<p class="muted">No bonds recorded yet.</p>';
 
+  const benches = RESONANCE_BENCHMARKS.map(
+    (b) =>
+      `<div class="bench ${res.displayed >= b.value ? 'beat' : ''}"><span>${escapeHtml(b.name)}</span><strong>${formatResonance(b.value)}</strong></div>`,
+  ).join('');
+
   return shell(
-    `<div class="panel">
-      <div class="scene-head"><h2>${escapeHtml(p.name)}</h2><button data-action="close-sheet">Close</button></div>
-      <p class="muted">${ORIGINS[p.origin].name} · ${DISCIPLINES[p.discipline].name} · ${p.convictions.map((c) => CONVICTIONS[c].name).join(' / ')}</p>
-      <p>Band <strong>${p.powerBand}</strong> · Resonance ~${d.resonance} · Level ${p.level} · Resolve ${p.resolve}</p>
-      <div class="statline" style="margin:0.6rem 0 1rem">
-        <span>VIT ${d.vitality}</span><span>FLUX ${d.flux}</span><span>Guard ${d.guard}</span><span>Stagger ${d.stagger}</span>
+    `<div class="sheet-layout">
+      <div class="panel aura-panel">
+        <img src="./refs/ref-power-surge.png" alt="Flux power surge reference" />
+        <div class="scanner-bar compact">
+          <span class="res-label">RESONANCE (held)</span>
+          <div class="res-hero">${formatResonance(res.displayed)}</div>
+          <div class="muted">${res.bandLabel} · Core ${res.coreScore} ×${res.scaleFactor} ×${res.formFactor.toFixed(1)} form</div>
+          <div class="res-open">Wide open estimate: <strong>${formatResonance(open.displayed)}</strong></div>
+        </div>
       </div>
-      <div class="sheet-grid">${attrs}</div>
-      <h3>Techniques</h3>
-      <p>${p.techniques.map((t) => TECHNIQUES[t]?.name ?? t).join(' · ')}</p>
-      <h3>Bonds</h3>
-      ${bonds}
-      <h3>Key flags</h3>
-      <p class="muted">${Object.keys(state.save.flags).slice(0, 18).join(' · ') || 'None yet'}</p>
+      <div class="panel">
+        <div class="scene-head"><h2>${escapeHtml(p.name)}</h2><button data-action="close-sheet">Close</button></div>
+        <p class="muted">${ORIGINS[p.origin].name} · ${DISCIPLINES[p.discipline].name} · ${p.convictions.map((c) => CONVICTIONS[c].name).join(' / ')}</p>
+        <div class="band-track">${bandTrack(p.powerBand)
+          .map(
+            (b) =>
+              `<span class="band-step ${b.reached ? 'reached' : ''} ${b.active ? 'active' : ''}">${escapeHtml(b.label)}</span>`,
+          )
+          .join('')}</div>
+        <p class="muted">${BAND_SCOPE[p.powerBand]}</p>
+        <div class="statline resources" style="margin:0.6rem 0 1rem">
+          <span>VIT ${d.vitality}</span><span>FLUX ${d.flux}</span><span>Guard ${d.guard}</span><span>Stagger threshold ${d.stagger}</span><span>Resolve ${p.resolve}</span><span>Lv ${p.level}</span>
+        </div>
+        <h3>Attributes</h3>
+        <div class="sheet-grid">${attrs}</div>
+        <h3>Crossfall Scanner Benchmarks</h3>
+        <div class="bench-list">${benches}</div>
+        <h3>Techniques</h3>
+        <p>${p.techniques.map((t) => TECHNIQUES[t]?.name ?? t).join(' · ')}</p>
+        <h3>Bonds</h3>
+        ${bonds}
+        <h3>Key flags</h3>
+        <p class="muted">${Object.keys(state.save.flags).slice(0, 18).join(' · ') || 'None yet'}</p>
+      </div>
     </div>`,
     state,
     { showNav: true },

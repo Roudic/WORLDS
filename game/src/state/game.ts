@@ -25,8 +25,11 @@ import { ENDINGS, SCENES, type ChoiceEffect, type StoryChoice } from '../data/st
 import {
   activateAscension,
   attemptConvince,
+  powerUp,
   resolveClashBeat,
   runEnemyTurns,
+  scanResonance,
+  suppressOutput,
   useTechnique,
 } from '../engine/combat';
 
@@ -471,6 +474,28 @@ export function reduce(state: AppState, action: Action): AppState {
       if (combat.finished) return finishCombat({ ...state, combat });
       return { ...state, combat };
     }
+    case 'COMBAT_POWER_UP': {
+      if (!state.combat) return state;
+      let combat = powerUp(state.combat, 'player');
+      if (!combat.finished) combat = runEnemyTurns(combat);
+      if (combat.pendingClash) return { ...state, combat, screen: 'clash' };
+      if (combat.finished) return finishCombat({ ...state, combat });
+      return { ...state, combat };
+    }
+    case 'COMBAT_SUPPRESS': {
+      if (!state.combat) return state;
+      let combat = suppressOutput(state.combat, 'player');
+      if (!combat.finished) combat = runEnemyTurns(combat);
+      if (combat.finished) return finishCombat({ ...state, combat });
+      return { ...state, combat };
+    }
+    case 'COMBAT_SCAN': {
+      if (!state.combat) return state;
+      let combat = scanResonance(state.combat, 'player', action.targetId);
+      if (!combat.finished) combat = runEnemyTurns(combat);
+      if (combat.finished) return finishCombat({ ...state, combat });
+      return { ...state, combat };
+    }
     case 'CLASH_CHOICE': {
       if (!state.combat) return state;
       const defenderChoices = ['push', 'overcharge', 'redirect', 'release'] as const;
@@ -560,6 +585,9 @@ export type Action =
     }
   | { type: 'COMBAT_ASCEND' }
   | { type: 'COMBAT_TALK'; targetId: string; dc: number }
+  | { type: 'COMBAT_POWER_UP' }
+  | { type: 'COMBAT_SUPPRESS' }
+  | { type: 'COMBAT_SCAN'; targetId: string }
   | { type: 'CLASH_CHOICE'; choice: string }
   | { type: 'OPEN_SHEET' }
   | { type: 'CLOSE_SHEET' }

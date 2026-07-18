@@ -178,9 +178,16 @@ export function playerDerived(player: PlayerBuild) {
   const guard = computeGuard(player.attributes.agility);
   const stagger = computeStagger(player.attributes.grit, player.level);
   const resonance = computeResonance(
-    player.level * 8 + player.attributes.will + player.attributes.control,
+    player.level * 10 +
+      player.attributes.might +
+      player.attributes.agility +
+      player.attributes.control +
+      player.attributes.grit +
+      player.attributes.will +
+      Math.floor((player.attributes.intellect + player.attributes.presence) / 2) +
+      player.ascensionMastery * 4,
     player.powerBand,
-    1,
+    player.ascensionUnlocked ? 1.8 + player.ascensionMastery * 0.15 : 1,
     0.6,
     1,
   );
