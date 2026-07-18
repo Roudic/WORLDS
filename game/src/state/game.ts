@@ -37,6 +37,15 @@ import {
   type CombatState,
 } from '../engine/combat';
 import {
+  activeCharacter,
+  createRosterCharacter,
+  ensureRoster,
+  patchCharacter,
+  placeCharacter,
+  selectCharacter,
+  syncActiveCharacter,
+} from '../engine/characters';
+import {
   activeWorld,
   createWorld,
   raiseCeiling,
@@ -61,6 +70,8 @@ export interface AppState {
     convictionB?: ConvictionId;
   };
   worldDraft: WorldDraft;
+  /** campaign = new save; roster = add another character */
+  createMode: 'campaign' | 'roster';
   save: SaveGame | null;
   combat: CombatState | null;
   returnSceneId: string | null;
@@ -87,16 +98,19 @@ export function createNewSave(player: PlayerBuild): SaveGame {
     vexa: { ...emptyRelationship(), approval: 0 },
     maelin: { ...emptyRelationship(), approval: 1, trust: 1 },
   };
+  const first = createRosterCharacter(player);
   return {
-    version: 3,
-    player,
+    version: 4,
+    player: structuredClone(first.build),
     relationships,
     flags: {},
     sceneId: 'arrival_gate',
     partyIds: [],
     hubUnlocked: ['gate', 'clinic', 'arena'],
     chapter: 1,
-    log: ['Campaign begun — forge a world, then chase random events that shape who you become.'],
+    log: [
+      'Campaign begun — create characters, place them on worlds, develop whoever you want.',
+    ],
     aiBeat: null,
     storySeed: Date.now() % 1_000_000,
     trainCount: 0,
@@ -104,6 +118,8 @@ export function createNewSave(player: PlayerBuild): SaveGame {
     activeWorldId: null,
     currentEvent: null,
     developmentLog: [],
+    characters: [first],
+    activeCharacterId: first.id,
   };
 }
 
@@ -124,6 +140,7 @@ export function initialAppState(): AppState {
       tone: 'discovery',
       fluxBias: 'pulse',
     },
+    createMode: 'campaign',
     save: loaded,
     combat: null,
     returnSceneId: null,
@@ -134,7 +151,6 @@ export function initialAppState(): AppState {
 }
 
 function migrateSave(save: SaveGame): SaveGame {
-  save.version = 3;
   save.player.trainedStats = save.player.trainedStats ?? {};
   save.player.formId = save.player.formId ?? 'base';
   save.trainCount = save.trainCount ?? 0;
@@ -143,10 +159,12 @@ function migrateSave(save: SaveGame): SaveGame {
   save.activeWorldId = save.activeWorldId ?? save.worlds[0]?.id ?? null;
   save.currentEvent = save.currentEvent ?? null;
   save.developmentLog = save.developmentLog ?? [];
+  save = ensureRoster(save);
+  save.version = 4;
   if (save.sceneId === 'ai_runtime' && !save.aiBeat) {
     save.aiBeat = generateAiHub(save);
   }
-  return save;
+  return syncActiveCharacter(save);
 }
 
 export function loadSave(): SaveGame | null {
@@ -415,16 +433,47 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'SET_DRAFT':
       return { ...state, draft: { ...state.draft, ...action.patch } };
     case 'START_NEW': {
+      if (state.createMode === 'roster' && state.save) {
+        const build = finalizeDraft(state.draft);
+        const character = createRosterCharacter(build);
+        // Auto-place on active world if one exists
+        character.worldId = state.save.activeWorldId ?? null;
+        let save: SaveGame = {
+          ...state.save,
+          characters: [...(state.save.characters ?? []), character],
+          activeCharacterId: character.id,
+          log: [
+            ...state.save.log,
+            `Character forged: ${character.build.name}${
+              character.worldId
+                ? ` — stationed on world`
+                : ' — place them on a world to catch events'
+            }.`,
+          ],
+        };
+        save = syncActiveCharacter(save);
+        persistSave(save);
+        return {
+          ...state,
+          save,
+          createMode: 'campaign',
+          screen: 'characters',
+          endingId: null,
+          lastDiceText: null,
+          toast: `${character.build.name} joined the roster — place them and develop anytime.`,
+        };
+      }
       const player = finalizeDraft(state.draft);
       const save = createNewSave(player);
       persistSave(save);
       return {
         ...state,
         save,
-        screen: 'worlds',
+        createMode: 'campaign',
+        screen: 'characters',
         endingId: null,
         lastDiceText: null,
-        toast: 'Create a world — then roll random events that grow you with reasons.',
+        toast: 'Roster ready — create worlds, place characters, roll events around them.',
       };
     }
     case 'CONTINUE': {
@@ -440,10 +489,65 @@ export function reduce(state: AppState, action: Action): AppState {
       }
       const screen: ScreenId = save.currentEvent
         ? 'event'
-        : (save.worlds?.length ?? 0) > 0 || save.version === 3
-          ? 'worlds'
+        : (save.characters?.length ?? 0) > 0 || (save.worlds?.length ?? 0) > 0
+          ? 'characters'
           : 'scene';
-      return { ...state, save, screen, endingId: null };
+      return { ...state, save, screen, endingId: null, createMode: 'campaign' };
+    }
+    case 'OPEN_CHARACTERS':
+      return { ...state, screen: 'characters', toast: null };
+    case 'OPEN_CREATE_CAMPAIGN':
+      return {
+        ...state,
+        screen: 'create',
+        createMode: 'campaign',
+        toast: null,
+      };
+    case 'OPEN_CREATE_CHARACTER':
+      return {
+        ...state,
+        screen: 'create',
+        createMode: 'roster',
+        draft: {
+          name: 'New Wanderer',
+          origin: 'crossborn',
+          discipline: 'channeler',
+          motivationId: 'answers',
+          convictionA: 'mercy',
+          convictionB: 'truth',
+        },
+        toast: 'Forge another character for the roster.',
+      };
+    case 'SELECT_CHARACTER': {
+      if (!state.save) return state;
+      const save = selectCharacter(state.save, action.characterId);
+      if (!save) return { ...state, toast: 'Character not found.' };
+      persistSave(save);
+      const ch = activeCharacter(save);
+      return {
+        ...state,
+        save,
+        screen: save.currentEvent ? 'event' : 'characters',
+        toast: ch
+          ? `Now developing ${ch.build.name}${ch.worldId ? ' on their world' : ''}.`
+          : 'Character selected.',
+      };
+    }
+    case 'PLACE_CHARACTER': {
+      if (!state.save) return state;
+      const save = placeCharacter(state.save, action.characterId, action.worldId);
+      if (!save) return { ...state, toast: 'Could not place character.' };
+      persistSave(save);
+      const ch = (save.characters ?? []).find((c) => c.id === action.characterId);
+      const world = (save.worlds ?? []).find((w) => w.id === action.worldId);
+      return {
+        ...state,
+        save,
+        screen: 'characters',
+        toast: ch && world
+          ? `${ch.build.name} stationed on ${world.name} — events will find them there.`
+          : 'Placement updated.',
+      };
     }
     case 'SET_WORLD_DRAFT':
       return { ...state, worldDraft: { ...state.worldDraft, ...action.patch } };
@@ -458,7 +562,7 @@ export function reduce(state: AppState, action: Action): AppState {
         tone: state.worldDraft.tone,
         fluxBias: state.worldDraft.fluxBias,
       });
-      const save: SaveGame = {
+      let save: SaveGame = {
         ...state.save,
         worlds: [...(state.save.worlds ?? []), world],
         activeWorldId: world.id,
@@ -467,19 +571,25 @@ export function reduce(state: AppState, action: Action): AppState {
           `World forged: ${world.name} (${world.tone}, ceiling ${world.powerCeiling}).`,
         ],
       };
+      // Station active character if they have no world yet
+      const ch = activeCharacter(save);
+      if (ch && !ch.worldId) {
+        const placed = placeCharacter(save, ch.id, world.id);
+        if (placed) save = placed;
+      }
       persistSave(save);
       return {
         ...state,
         save,
         screen: 'worlds',
-        toast: `${world.name} is live — set focus, raise the ceiling, or roll an event.`,
+        toast: `${world.name} is live — characters stationed here catch random events.`,
       };
     }
     case 'SELECT_WORLD': {
       if (!state.save) return state;
       const exists = (state.save.worlds ?? []).some((w) => w.id === action.worldId);
       if (!exists) return { ...state, toast: 'World not found.' };
-      const save = { ...state.save, activeWorldId: action.worldId, currentEvent: null };
+      const save = { ...state.save, activeWorldId: action.worldId };
       persistSave(save);
       return { ...state, save, screen: 'worlds', toast: 'Active world switched.' };
     }
@@ -506,38 +616,65 @@ export function reduce(state: AppState, action: Action): AppState {
     }
     case 'ROLL_EVENT': {
       if (!state.save) return state;
-      const world = activeWorld(state.save);
-      if (!world) return { ...state, toast: 'Create a world first.', screen: 'world_create' };
-      const event = rollWorldEvent(state.save, world);
-      const save = { ...state.save, currentEvent: event };
+      const ch = activeCharacter(state.save);
+      if (!ch) {
+        return {
+          ...state,
+          toast: 'Create a character first.',
+          screen: 'create',
+          createMode: 'roster',
+        };
+      }
+      // Events happen around the character on their stationed world
+      const worldId = ch.worldId ?? state.save.activeWorldId;
+      const world = (state.save.worlds ?? []).find((w) => w.id === worldId) ?? null;
+      if (!world) {
+        return {
+          ...state,
+          toast: 'Place this character on a world first (or create a world).',
+          screen: (state.save.worlds?.length ?? 0) ? 'characters' : 'world_create',
+        };
+      }
+      // Ensure they're stationed when rolling from an active world fallback
+      let save = state.save;
+      if (!ch.worldId) {
+        const placed = placeCharacter(save, ch.id, world.id);
+        if (placed) save = placed;
+      }
+      save = { ...save, activeWorldId: world.id };
+      const event = rollWorldEvent(save, world);
+      const updated = activeCharacter(save);
+      if (updated) {
+        save = patchCharacter(save, { ...updated, currentEvent: event });
+      } else {
+        save = { ...save, currentEvent: event };
+      }
       persistSave(save);
       return {
         ...state,
         save,
         screen: 'event',
         lastDiceText: null,
-        toast: 'A random event lands — your choice writes the reason for the gain.',
+        toast: `Event finds ${ch.build.name} on ${world.name}.`,
       };
     }
     case 'RESOLVE_EVENT': {
-      if (!state.save || !state.save.currentEvent) return state;
-      const world = activeWorld(state.save);
-      if (!world) return { ...state, toast: 'No active world.', screen: 'worlds' };
-      const result = resolveEventChoice(
-        state.save,
-        world,
-        state.save.currentEvent,
-        action.choiceId,
-      );
-      const save = patchActiveWorld(
-        { ...result.save, currentEvent: null },
-        result.world,
+      if (!state.save) return state;
+      const ch = activeCharacter(state.save);
+      const event = ch?.currentEvent ?? state.save.currentEvent;
+      if (!event) return state;
+      const worldId = ch?.worldId ?? state.save.activeWorldId;
+      const world = (state.save.worlds ?? []).find((w) => w.id === worldId) ?? activeWorld(state.save);
+      if (!world) return { ...state, toast: 'No world for this event.', screen: 'worlds' };
+      const result = resolveEventChoice(state.save, world, event, action.choiceId);
+      const save = syncActiveCharacter(
+        patchActiveWorld({ ...result.save, currentEvent: null }, result.world),
       );
       persistSave(save);
       return {
         ...state,
         save,
-        screen: 'worlds',
+        screen: 'characters',
         lastDiceText: result.diceText,
         toast: result.toast,
       };
@@ -671,7 +808,7 @@ export function reduce(state: AppState, action: Action): AppState {
         'tempered_wake',
         state.save.player.catalystReady || !!state.save.flags['Catalyst.TemperedWake'],
       );
-      const save = {
+      let save: SaveGame = {
         ...state.save,
         player: {
           ...state.save.player,
@@ -686,6 +823,7 @@ export function reduce(state: AppState, action: Action): AppState {
             : { 'Ascension.Controlled': true }),
         },
       };
+      save = flushPlayerToRoster(save);
       persistSave(save);
       return { ...state, combat, save };
     }
@@ -764,9 +902,11 @@ export function reduce(state: AppState, action: Action): AppState {
           ? 'combat'
           : state.save?.currentEvent
             ? 'event'
-            : (state.save?.worlds?.length ?? 0) > 0
-              ? 'worlds'
-              : 'scene',
+            : (state.save?.characters?.length ?? 0) > 0
+              ? 'characters'
+              : (state.save?.worlds?.length ?? 0) > 0
+                ? 'worlds'
+                : 'scene',
       };
     case 'DELETE_SAVE':
       clearSave();
@@ -778,9 +918,21 @@ export function reduce(state: AppState, action: Action): AppState {
   }
 }
 
+function flushPlayerToRoster(save: SaveGame): SaveGame {
+  const ch = activeCharacter(save);
+  if (!ch) return save;
+  return patchCharacter(save, {
+    ...ch,
+    build: structuredClone(save.player),
+    flags: { ...ch.flags, ...save.flags },
+    trainCount: save.trainCount ?? ch.trainCount,
+    currentEvent: save.currentEvent ?? null,
+  });
+}
+
 function finishCombat(state: AppState): AppState {
   if (!state.save || !state.combat) return state;
-  const save = structuredClone(state.save);
+  let save = structuredClone(state.save);
   const victory = state.combat.victory;
   save.log.push(
     victory
@@ -795,6 +947,7 @@ function finishCombat(state: AppState): AppState {
     save.player.resolve = player.resolve;
     if (player.pressure >= 6) save.flags['Pressure.High'] = true;
   }
+  save = flushPlayerToRoster(save);
 
   if (!victory && state.combat.id.startsWith('final')) {
     const ended = resolveEnding(save, 'lose');
@@ -856,6 +1009,11 @@ export type Action =
   | { type: 'RAISE_CEILING' }
   | { type: 'ROLL_EVENT' }
   | { type: 'RESOLVE_EVENT'; choiceId: string }
+  | { type: 'OPEN_CHARACTERS' }
+  | { type: 'OPEN_CREATE_CAMPAIGN' }
+  | { type: 'OPEN_CREATE_CHARACTER' }
+  | { type: 'SELECT_CHARACTER'; characterId: string }
+  | { type: 'PLACE_CHARACTER'; characterId: string; worldId: string }
   | { type: 'OPEN_LEGACY_TRIALS' }
   | { type: 'OPEN_SHEET' }
   | { type: 'CLOSE_SHEET' }
@@ -879,4 +1037,5 @@ export {
   SCENES,
   playerDerived,
   activeWorld,
+  activeCharacter,
 };

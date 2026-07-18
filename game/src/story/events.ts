@@ -293,13 +293,17 @@ const FACTORIES: EventFactory[] = [
 ];
 
 export function rollWorldEvent(save: SaveGame, world: World): WorldEvent {
+  const ch = (save.characters ?? []).find((c) => c.id === save.activeCharacterId);
+  const train = ch?.trainCount ?? save.trainCount ?? 0;
   const seed =
     (save.storySeed ?? 1) +
     world.eventCount * 97 +
     world.seed +
-    (save.trainCount ?? 0) * 13;
+    train * 13 +
+    (ch ? ch.id.length * 17 : 0);
   const rand = rng(seed);
-  const pl = playerPower(save.player, { formId: save.player.formId ?? 'base' }).powerLevel;
+  const player = ch?.build ?? save.player;
+  const pl = playerPower(player, { formId: player.formId ?? 'base' }).powerLevel;
   // Weight by world focus / tone
   let pool = [...FACTORIES];
   if (world.focus === 'stabilize') {
@@ -312,7 +316,13 @@ export function rollWorldEvent(save: SaveGame, world: World): WorldEvent {
   if (world.tone === 'war') pool = [FACTORIES[0], FACTORIES[3], ...pool];
   if (world.tone === 'ascension') pool = [FACTORIES[4], FACTORIES[0], ...pool];
   const factory = pick(rand, pool);
-  return factory({ world, player: save.player, rand, pl });
+  const event = factory({ world, player, rand, pl });
+  // Frame the event around the stationed character
+  const who = player.name;
+  return {
+    ...event,
+    body: `${who} is on ${world.name}. ${event.body}`,
+  };
 }
 
 export interface EventResolveResult {
@@ -331,16 +341,24 @@ export function resolveEventChoice(
 ): EventResolveResult {
   const choice = event.choices.find((c) => c.id === choiceId) ?? event.choices[0];
   const nextSave: SaveGame = structuredClone(save);
-  nextSave.player.trainedStats = nextSave.player.trainedStats ?? {};
   nextSave.developmentLog = nextSave.developmentLog ?? [];
-  nextSave.trainCount = (nextSave.trainCount ?? 0) + 1;
+  nextSave.characters = nextSave.characters ?? [];
+
+  const chIndex = nextSave.characters.findIndex(
+    (c) => c.id === nextSave.activeCharacterId,
+  );
+  const ch = chIndex >= 0 ? nextSave.characters[chIndex] : null;
+  let player = structuredClone(ch?.build ?? nextSave.player);
+  player.trainedStats = player.trainedStats ?? {};
+  let trainCount = (ch?.trainCount ?? nextSave.trainCount ?? 0) + 1;
+  let charFlags = { ...(ch?.flags ?? {}) };
 
   const attr = choice.attribute ?? 'will';
   const dc = choice.dc ?? 12;
   const roll = makeCheck({
     rollType: `${event.title}: ${choice.label}`,
-    attributeValue: nextSave.player.attributes[attr],
-    proficiency: Math.floor(nextSave.player.level / 2),
+    attributeValue: player.attributes[attr],
+    proficiency: Math.floor(player.level / 2),
     dc,
     useRiftDie: world.fluxBias === 'riftforce' || world.stability < 35,
   });
@@ -354,32 +372,28 @@ export function resolveEventChoice(
   const amount = success ? (strong ? 14 : 9) : 4;
 
   for (const stat of lean) {
-    nextSave.player.trainedStats = trainStat(
-      nextSave.player.trainedStats,
-      stat,
-      amount,
-    );
+    player.trainedStats = trainStat(player.trainedStats, stat, amount);
     gains.push(`+${amount} ${stat}`);
   }
 
-  // Reasoned narrative — why the gain happened
-  const reason = buildReason(event, choice, success, world, roll.outcomeTier);
+  const reason = buildReason(event, choice, success, world, roll.outcomeTier, player.name);
 
   let worldNext = { ...world, eventCount: world.eventCount + 1 };
   worldNext = applyFocusAndChoice(worldNext, event, choice, success);
 
-  // Special outcomes
   if (choice.id === 'master' && success) {
-    nextSave.player.ascensionMastery = (nextSave.player.ascensionMastery ?? 0) + 1;
-    nextSave.player.ascensionUnlocked = true;
-    nextSave.player.catalystReady = true;
+    player.ascensionMastery = (player.ascensionMastery ?? 0) + 1;
+    player.ascensionUnlocked = true;
+    player.catalystReady = true;
+    charFlags['Ascension.TemperedWake'] = true;
     nextSave.flags['Ascension.TemperedWake'] = true;
     gains.push('+1 transform mastery');
   }
   if (choice.id === 'dirty' && success) {
+    charFlags['Ascension.TemperedWake'] = true;
     nextSave.flags['Ascension.TemperedWake'] = true;
-    nextSave.player.ascensionUnlocked = true;
-    nextSave.player.formId = 'tempered_wake';
+    player.ascensionUnlocked = true;
+    player.formId = 'tempered_wake';
     gains.push('Tempered Wake unlocked (risky)');
   }
   if (choice.id === 'raise_world' && success) {
@@ -387,31 +401,52 @@ export function resolveEventChoice(
     gains.push(`world ceiling → ${worldNext.powerCeiling}`);
   }
   if (choice.convictionTouch && success) {
+    charFlags[`Conviction.${choice.convictionTouch}.Lived`] = true;
     nextSave.flags[`Conviction.${choice.convictionTouch}.Lived`] = true;
     gains.push(`lived conviction: ${choice.convictionTouch}`);
   }
 
-  nextSave.player.level = 3 + Math.floor((nextSave.trainCount ?? 0) / 4);
-  if (success) nextSave.player.resolve += strong ? 2 : 1;
+  player.level = 3 + Math.floor(trainCount / 4);
+  if (success) player.resolve += strong ? 2 : 1;
 
-  const pl = playerPower(nextSave.player, { formId: nextSave.player.formId ?? 'base' });
+  const pl = playerPower(player, { formId: player.formId ?? 'base' });
   gains.push(`PL now ${formatPL(pl.powerLevel)}`);
 
   const entry: DevEntry = {
     id: `dev_${Date.now().toString(36)}`,
     at: Date.now(),
+    characterId: ch?.id,
+    characterName: player.name,
     worldId: world.id,
     worldName: world.name,
     eventTitle: event.title,
     reason,
     gains,
   };
-  nextSave.developmentLog = [entry, ...nextSave.developmentLog].slice(0, 60);
-  nextSave.log.push(`${event.title}: ${reason} (${gains.join(', ')})`);
+
+  nextSave.player = player;
+  nextSave.trainCount = trainCount;
+  nextSave.currentEvent = null;
+  nextSave.developmentLog = [entry, ...nextSave.developmentLog].slice(0, 80);
+  nextSave.log.push(
+    `${player.name} @ ${world.name} — ${event.title}: ${reason} (${gains.join(', ')})`,
+  );
+
+  if (chIndex >= 0 && ch) {
+    nextSave.characters[chIndex] = {
+      ...ch,
+      build: player,
+      trainCount,
+      flags: charFlags,
+      currentEvent: null,
+      worldId: ch.worldId ?? world.id,
+      developmentLog: [entry, ...ch.developmentLog].slice(0, 60),
+    };
+  }
 
   worldNext.history = [
     ...worldNext.history,
-    `Event “${event.title}” → ${choice.label}: ${success ? 'held' : 'costly'}.`,
+    `${player.name}: “${event.title}” → ${choice.label} (${success ? 'held' : 'costly'}).`,
   ].slice(-40);
 
   const diceText = `${roll.narrative} (${roll.total} vs DC ${roll.targetDc})${
@@ -422,7 +457,7 @@ export function resolveEventChoice(
     save: nextSave,
     world: worldNext,
     diceText,
-    toast: `${reason} → ${gains.slice(0, 3).join(', ')}`,
+    toast: `${player.name}: ${reason} → ${gains.slice(0, 3).join(', ')}`,
     entry,
   };
 }
@@ -433,42 +468,43 @@ function buildReason(
   success: boolean,
   world: World,
   tier: string,
+  who = 'You',
 ): string {
   const ok = success ? 'earned' : 'scar-earned';
   const bits: Record<string, string> = {
     spar_hard: success
-      ? `You took ${event.title} head-on; muscle memory burned under live threat in ${world.name}`
-      : `You got tagged in the spar — pain taught Endurance anyway`,
-    outthink: `You studied the rival’s geometry; Defense rose because you refused blind pride`,
+      ? `${who} took ${event.title} head-on; muscle memory burned under live threat in ${world.name}`
+      : `${who} got tagged in the spar — pain taught Endurance anyway`,
+    outthink: `${who} studied the rival’s geometry; Defense rose because pride was refused`,
     talk_down: success
-      ? `You cooled the crowd — Resistance rose from choosing control over spectacle`
-      : `The crowd booed, but holding your tongue still tempered Resistance`,
+      ? `${who} cooled the crowd — Resistance rose from choosing control over spectacle`
+      : `The crowd booed, but ${who} held their tongue and still tempered Resistance`,
     drink: success
-      ? `You metabolized a ${world.fluxBias} well — Force climbed because the world poured into you`
-      : `The well bit back — you kept a fragment of Force through the burn`,
-    map: `You turned danger into lore for “${world.storyArc}” — Force rose with understanding`,
-    seal: `You sealed the well for others — Resistance/Endurance rose from carrying weight that wasn’t glory`,
-    sign: `Patronage from a faction sharpened Offense — public backing changes how hard you hit`,
-    refuse: `Refusing the decree hardened Resistance — independence has a measurable edge`,
-    broker: `Juggling sides trained Defense/Speed — politics is footwork`,
-    brace: `Your body became a pillar under a falling district — Strength/Endurance remember that`,
-    rewrite: `Rewriting anchors taught Force/Defense — machines answer precision`,
-    evacuate: `You chose lives over landmarks — Speed/Resistance rose with that priority`,
+      ? `${who} metabolized a ${world.fluxBias} well — Force climbed as the world poured in`
+      : `The well bit back — ${who} kept a fragment of Force through the burn`,
+    map: `${who} turned danger into lore for “${world.storyArc}” — Force rose with understanding`,
+    seal: `${who} sealed the well for others — Resistance/Endurance from weight that wasn’t glory`,
+    sign: `Patronage sharpened ${who}’s Offense — public backing changes how hard they hit`,
+    refuse: `${who} refused the decree — Resistance hardened from standing alone`,
+    broker: `${who} juggled sides — Defense/Speed from political footwork`,
+    brace: `${who} became a pillar under a falling district — Strength/Endurance remember that`,
+    rewrite: `${who} rewrote anchors — Force/Defense from precision`,
+    evacuate: `${who} chose lives over landmarks — Speed/Resistance rose with that priority`,
     dirty: success
-      ? `A dirty multiplier shortcut lit Tempered Wake — Force/Offense spiked with a debt`
-      : `The shortcut failed, but the attempt still scored your Force channels`,
-    master: `Clean drills raised mastery — Resistance/Speed from refusing cheap power`,
-    raise_world: `You widened ${world.name}’s power ceiling — management changed the world’s rules`,
-    body: `Impact lessons left Strength/Endurance with a named scar-story`,
-    breath: `Breath-and-timing work raised Speed/Defense — the mentor tied it to your stance`,
-    mind: `Reading Flux raised Force/Resistance — comprehension as armor`,
-    advance: `You pushed “${world.storyArc}” forward — Resistance from serving a story bigger than your PL`,
-    cash_in: `You converted a world truth into personal bite — Offense/Force with a hotter threat level`,
-    share: `Sharing with a companion built Defense — trust as a combat resource`,
+      ? `${who} took a dirty multiplier shortcut — Tempered Wake lit with a debt`
+      : `The shortcut failed, but ${who} still scored Force channels`,
+    master: `${who} drilled clean mastery — Resistance/Speed from refusing cheap power`,
+    raise_world: `${who} widened ${world.name}’s power ceiling — management changed the world’s rules`,
+    body: `Impact lessons left ${who} Strength/Endurance with a named scar-story`,
+    breath: `Breath-and-timing work raised ${who}’s Speed/Defense`,
+    mind: `${who} read Flux — Force/Resistance as armor`,
+    advance: `${who} pushed “${world.storyArc}” forward — Resistance from a story bigger than PL`,
+    cash_in: `${who} converted a world truth into personal bite — Offense/Force, hotter threat`,
+    share: `${who} shared with a companion — Defense from trust`,
   };
   return (
     bits[choice.id] ??
-    `Through “${event.title}” (${choice.label}) you ${ok} growth (${tier}) in ${world.name}`
+    `Through “${event.title}” (${choice.label}) ${who} ${ok} growth (${tier}) in ${world.name}`
   );
 }
 

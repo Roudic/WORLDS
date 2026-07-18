@@ -182,7 +182,8 @@ export type ScreenId =
   | 'gallery'
   | 'worlds'
   | 'world_create'
-  | 'event';
+  | 'event'
+  | 'characters';
 
 export interface CompanionDef {
   id: string;
@@ -316,6 +317,8 @@ export interface WorldEvent {
 export interface DevEntry {
   id: string;
   at: number;
+  characterId?: string;
+  characterName?: string;
   worldId: string;
   worldName: string;
   eventTitle: string;
@@ -323,8 +326,21 @@ export interface DevEntry {
   gains: string[];
 }
 
+/** Playable roster entry — place on a world, develop anytime */
+export interface RosterCharacter {
+  id: string;
+  build: PlayerBuild;
+  /** World this character is stationed on (events happen around them there) */
+  worldId: string | null;
+  trainCount: number;
+  flags: GameFlags;
+  developmentLog: DevEntry[];
+  currentEvent: WorldEvent | null;
+  createdAt: number;
+}
+
 export interface SaveGame {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   player: PlayerBuild;
   relationships: Record<string, Relationship>;
   flags: GameFlags;
@@ -340,8 +356,11 @@ export interface SaveGame {
   /** Managed worlds sandbox */
   worlds?: ManagedWorld[];
   activeWorldId?: string | null;
-  /** Active random AI event */
+  /** Active random AI event (mirrors active character) */
   currentEvent?: WorldEvent | null;
-  /** Character development journal — gains with reasons */
+  /** Campaign-wide development journal */
   developmentLog?: DevEntry[];
+  /** Multi-character roster */
+  characters?: RosterCharacter[];
+  activeCharacterId?: string | null;
 }

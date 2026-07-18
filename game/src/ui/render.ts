@@ -24,12 +24,14 @@ import {
   MOTIVATIONS,
   ORIGINS,
   SCENES,
+  activeCharacter,
   activeWorld,
   playerDerived,
   visibleChoices,
 } from '../state/game';
 import { ENDINGS } from '../data/story';
 import type { FluxBias, WorldFocus, WorldTone } from '../engine/types';
+import { charactersOnWorld } from '../engine/characters';
 
 export function render(state: AppState): string {
   switch (state.screen) {
@@ -37,6 +39,8 @@ export function render(state: AppState): string {
       return renderTitle(state);
     case 'create':
       return renderCreate(state);
+    case 'characters':
+      return renderCharacters(state);
     case 'worlds':
       return renderWorlds(state);
     case 'world_create':
@@ -107,7 +111,7 @@ function handleClick(
 ) {
   switch (action) {
     case 'goto-create':
-      dispatch({ type: 'GOTO', screen: 'create' });
+      dispatch({ type: 'OPEN_CREATE_CAMPAIGN' });
       break;
     case 'goto-title':
       dispatch({ type: 'GOTO', screen: 'title' });
@@ -178,6 +182,22 @@ function handleClick(
     case 'open-worlds':
       dispatch({ type: 'OPEN_WORLDS' });
       break;
+    case 'open-characters':
+      dispatch({ type: 'OPEN_CHARACTERS' });
+      break;
+    case 'open-create-character':
+      dispatch({ type: 'OPEN_CREATE_CHARACTER' });
+      break;
+    case 'select-character':
+      if (payload) dispatch({ type: 'SELECT_CHARACTER', characterId: payload });
+      break;
+    case 'place-character': {
+      const [characterId, worldId] = (payload ?? '').split('|');
+      if (characterId && worldId) {
+        dispatch({ type: 'PLACE_CHARACTER', characterId, worldId });
+      }
+      break;
+    }
     case 'open-world-create':
       dispatch({ type: 'OPEN_WORLD_CREATE' });
       break;
@@ -222,6 +242,7 @@ function shell(content: string, state: AppState, opts?: { showNav?: boolean }) {
           <div class="brand">Project <span>Riftwake</span></div>
           <div class="actions">
             <span class="meta">Ch.${save.chapter} · ${escapeHtml(save.player.name)} · PL <strong>${navRes}</strong> · Resolve ${save.player.resolve}</span>
+            <button data-action="open-characters">Characters</button>
             <button data-action="open-worlds">Worlds</button>
             <button data-action="open-story-ai">Story AI</button>
             <button data-action="open-sheet">Stats</button>
@@ -238,7 +259,7 @@ function renderTitle(state: AppState): string {
   return `<div class="hero-title fullbleed over-3d">
     <div class="hero-copy glass">
       <p class="brand-mark">Project <em>Riftwake</em></p>
-      <p class="tagline">Forge worlds, roll random AI events that shape who you become, and manage power ceilings with reasons behind every gain.</p>
+      <p class="tagline">Forge characters and worlds. Station people where events find them — develop whoever you want, whenever you want.</p>
       <div class="rule">Anything can happen, but everything does not have the same chance of happening.</div>
       <div class="actions">
         <button class="primary" data-action="goto-create">New Campaign</button>
@@ -301,20 +322,126 @@ function renderCreate(state: AppState): string {
         <p class="muted">Visual lock: original silhouettes, Flux materials, no borrowed power-up tropes.</p>
       </aside>
       <div class="panel">
-        <div class="scene-head"><h2>Character Creation</h2><span class="meta">Origin · Discipline · Conviction</span></div>
+        <div class="scene-head"><h2>${state.createMode === 'roster' ? 'New Character' : 'Character Creation'}</h2><span class="meta">Origin · Discipline · Conviction</span></div>
         <div class="field"><label>Name</label><input id="name-input" value="${escapeHtml(d.name ?? '')}" maxlength="24" /></div>
         <h3>Origin</h3><div class="grid-2">${originCards}</div>
         <h3>Discipline</h3><div class="grid-2">${discCards}</div>
         <h3>Convictions (pick two)</h3><div class="grid-2" id="conviction-grid">${convCards}</div>
         <h3>Motivation</h3><div class="grid-2">${motCards}</div>
         <div class="actions" style="margin-top:1.2rem">
-          <button data-action="goto-title">Back</button>
+          <button data-action="${state.createMode === 'roster' ? 'open-characters' : 'goto-title'}">Back</button>
           <button data-action="goto-gallery">Visual Refs</button>
-          <button class="primary" data-action="start-new">Forge your path</button>
+          <button class="primary" data-action="start-new">${
+            state.createMode === 'roster' ? 'Add to roster' : 'Forge your path'
+          }</button>
         </div>
       </div>
     </div>`,
     state,
+  );
+}
+
+function renderCharacters(state: AppState): string {
+  if (!state.save) return renderTitle(state);
+  const chars = state.save.characters ?? [];
+  const ch = activeCharacter(state.save);
+  const worlds = state.save.worlds ?? [];
+  const dice = state.lastDiceText
+    ? `<p class="dice-line">${escapeHtml(state.lastDiceText)}</p>`
+    : '';
+
+  const list =
+    chars.length === 0
+      ? `<p class="muted">No characters yet. Create one, place them on a world, then roll events around them.</p>`
+      : `<div class="grid-2 world-list">${chars
+          .map((c) => {
+            const active = c.id === ch?.id;
+            const worldName =
+              worlds.find((w) => w.id === c.worldId)?.name ?? 'Unplaced';
+            const pl = formatPL(
+              playerPower(c.build, { formId: c.build.formId ?? 'base' }).powerLevel,
+            );
+            const pending = c.currentEvent ? ' · Event pending' : '';
+            return `<button class="option ${active ? 'selected' : ''}" data-action="select-character" data-payload="${c.id}">
+              <strong>${escapeHtml(c.build.name)}${active ? ' · Active' : ''}${pending}</strong>
+              <small>${ORIGINS[c.build.origin].name} · ${DISCIPLINES[c.build.discipline].name} · PL ${pl}<br/>${escapeHtml(worldName)}</small>
+            </button>`;
+          })
+          .join('')}</div>`;
+
+  const placeButtons =
+    ch && worlds.length
+      ? `<div class="chip-row">
+          ${worlds
+            .map(
+              (w) =>
+                `<button class="${ch.worldId === w.id ? 'selected' : ''}" data-action="place-character" data-payload="${ch.id}|${w.id}">${escapeHtml(w.name)}</button>`,
+            )
+            .join('')}
+        </div>`
+      : worlds.length === 0
+        ? `<p class="muted">Create a world first, then station this character there.</p>
+           <button data-action="open-world-create">Create world</button>`
+        : '';
+
+  const log = (ch?.developmentLog ?? state.save.developmentLog ?? []).slice(0, 6);
+  const journal =
+    log.length === 0
+      ? '<p class="muted">This character’s journal fills as events around them resolve — every gain has a reason.</p>'
+      : `<ul class="log-list dev-log">${log
+          .map(
+            (e) => `<li><strong>${escapeHtml(e.eventTitle)}</strong> — ${escapeHtml(e.reason)}
+            <span class="meta">${escapeHtml(e.worldName)} · ${e.gains.map(escapeHtml).join(' · ')}</span></li>`,
+          )
+          .join('')}</ul>`;
+
+  const manage = ch
+    ? `<div class="panel world-manage">
+        <div class="scene-head">
+          <h2>${escapeHtml(ch.build.name)}</h2>
+          <span class="meta">${ORIGINS[ch.build.origin].name} · ${DISCIPLINES[ch.build.discipline].name}</span>
+        </div>
+        <p class="lede">Lv ${ch.build.level} · Resolve ${ch.build.resolve} · PL <strong>${formatPL(
+          playerPower(ch.build, { formId: ch.build.formId ?? 'base' }).powerLevel,
+        )}</strong></p>
+        <p class="muted">Convictions: ${ch.build.convictions.map((c) => CONVICTIONS[c].name).join(' / ')}</p>
+        <h3>Station on a world</h3>
+        <p class="muted">Random events happen around whoever is placed here. Switch characters anytime to develop them.</p>
+        ${placeButtons}
+        <div class="actions" style="margin-top:1rem">
+          <button class="primary" data-action="roll-event" ${ch.worldId || worlds[0] ? '' : 'disabled'}>Roll event around them</button>
+          <button data-action="open-sheet">Stats</button>
+          <button data-action="open-worlds">Manage worlds</button>
+        </div>
+        ${
+          ch.currentEvent
+            ? `<p class="dice-line">Pending: <strong>${escapeHtml(ch.currentEvent.title)}</strong> — <button data-action="select-character" data-payload="${ch.id}">Continue event</button></p>`
+            : ''
+        }
+      </div>`
+    : `<div class="panel"><div class="actions"><button class="primary" data-action="open-create-character">Create your first character</button></div></div>`;
+
+  return shell(
+    `<div class="worlds-layout">
+      <div class="panel">
+        <div class="scene-head"><h2>Character Roster</h2><span class="meta">Create · place · develop anytime</span></div>
+        <p class="lede">Multiple characters live across your worlds. Events find the one you’re developing — jump to anyone whenever you want.</p>
+        ${list}
+        <div class="actions" style="margin-top:1rem">
+          <button class="primary" data-action="open-create-character">New character</button>
+          <button data-action="open-worlds">World Hub</button>
+          <button data-action="legacy-trials">Legacy Trials</button>
+        </div>
+        ${dice}
+      </div>
+      ${manage}
+      <div class="panel">
+        <div class="scene-head"><h2>Their development</h2><span class="meta">${ch ? escapeHtml(ch.build.name) : '—'}</span></div>
+        ${journal}
+      </div>
+    </div>`,
+    state,
+    { showNav: true },
   );
 }
 
@@ -364,6 +491,13 @@ function renderWorlds(state: AppState): string {
           })
           .join('')}</div>`;
 
+  const stationed = world ? charactersOnWorld(state.save, world.id) : [];
+  const stationedLine = world
+    ? stationed.length
+      ? `<p class="muted">Stationed: ${stationed.map((c) => escapeHtml(c.build.name)).join(' · ')}</p>`
+      : `<p class="muted">No one stationed here yet — place characters from the roster.</p>`
+    : '';
+
   const manage = world
     ? `<div class="panel world-manage">
         <div class="scene-head">
@@ -378,6 +512,7 @@ function renderWorlds(state: AppState): string {
           <span>Events <strong>${world.eventCount}</strong></span>
         </div>
         <p class="muted">Factions: ${world.factions.map(escapeHtml).join(' · ')}</p>
+        ${stationedLine}
         <h3>Manage focus</h3>
         <div class="chip-row">
           ${FOCI.map(
@@ -386,9 +521,10 @@ function renderWorlds(state: AppState): string {
           ).join('')}
         </div>
         <div class="actions" style="margin-top:1rem">
-          <button class="primary" data-action="roll-event">Roll random event</button>
+          <button class="primary" data-action="roll-event">Roll event (active character)</button>
           <button data-action="raise-ceiling">Raise power ceiling</button>
           <button data-action="open-world-create">Create another world</button>
+          <button data-action="open-characters">Character roster</button>
         </div>
         <h3>World history</h3>
         <ul class="log-list">${world.history
@@ -401,10 +537,10 @@ function renderWorlds(state: AppState): string {
 
   const journal =
     log.length === 0
-      ? '<p class="muted">Development journal fills as events resolve — every gain has a reason.</p>'
+      ? '<p class="muted">Campaign journal fills as events resolve across characters — every gain has a reason.</p>'
       : `<ul class="log-list dev-log">${log
           .map(
-            (e) => `<li><strong>${escapeHtml(e.eventTitle)}</strong> — ${escapeHtml(e.reason)}
+            (e) => `<li><strong>${escapeHtml(e.characterName ?? 'Wanderer')}</strong> · ${escapeHtml(e.eventTitle)} — ${escapeHtml(e.reason)}
             <span class="meta">${e.gains.map(escapeHtml).join(' · ')}</span></li>`,
           )
           .join('')}</ul>`;
@@ -413,19 +549,19 @@ function renderWorlds(state: AppState): string {
     `<div class="worlds-layout">
       <div class="panel">
         <div class="scene-head"><h2>World Hub</h2><span class="meta">Create · manage · progress</span></div>
-        <p class="lede">Random AI events drive character growth. You manage each world’s power ceiling, stability, threat, and story arc.</p>
+        <p class="lede">Manage power ceilings, stability, threat, and story arcs. Characters stationed here catch random events.</p>
         ${list}
         <div class="actions" style="margin-top:1rem">
           <button class="primary" data-action="open-world-create">New world</button>
+          <button data-action="open-characters">Characters</button>
           <button data-action="legacy-trials">Legacy Trials</button>
-          <button data-action="open-story-ai">Story AI grind</button>
           <button data-action="open-sheet">Stats</button>
         </div>
         ${dice}
       </div>
       ${manage}
       <div class="panel">
-        <div class="scene-head"><h2>Development</h2><span class="meta">Gains with reasons</span></div>
+        <div class="scene-head"><h2>Campaign development</h2><span class="meta">All characters</span></div>
         ${journal}
       </div>
     </div>`,
@@ -467,9 +603,12 @@ function renderWorldCreate(state: AppState): string {
 }
 
 function renderEvent(state: AppState): string {
-  if (!state.save || !state.save.currentEvent) return renderWorlds(state);
-  const event = state.save.currentEvent;
-  const world = activeWorld(state.save);
+  if (!state.save) return renderTitle(state);
+  const ch = activeCharacter(state.save);
+  const event = ch?.currentEvent ?? state.save.currentEvent;
+  if (!event) return renderCharacters(state);
+  const world =
+    (state.save.worlds ?? []).find((w) => w.id === ch?.worldId) ?? activeWorld(state.save);
   const choices = event.choices
     .map(
       (c) => `<button data-action="resolve-event" data-payload="${c.id}">
@@ -483,13 +622,14 @@ function renderEvent(state: AppState): string {
     `<div class="panel event-panel">
       <div class="scene-head">
         <h2>${escapeHtml(event.title)}</h2>
-        <span class="meta">${escapeHtml(event.tag)}${world ? ` · ${escapeHtml(world.name)}` : ''}</span>
+        <span class="meta">${escapeHtml(event.tag)}${ch ? ` · ${escapeHtml(ch.build.name)}` : ''}${world ? ` · ${escapeHtml(world.name)}` : ''}</span>
       </div>
       <p class="lede">${escapeHtml(event.body)}</p>
-      <p class="muted">Pick a path — dice decide the margin; the gain always comes with a reason.</p>
+      <p class="muted">Pick a path — dice decide the margin; the gain writes onto this character with a reason.</p>
       <div class="choice-stack">${choices}</div>
       <div class="actions" style="margin-top:1rem">
-        <button data-action="open-worlds">Back to worlds</button>
+        <button data-action="open-characters">Back to roster</button>
+        <button data-action="open-worlds">Worlds</button>
       </div>
     </div>`,
     state,
@@ -926,9 +1066,9 @@ function renderSheet(state: AppState): string {
         <h3>Bonds</h3>
         ${bonds}
         <div class="actions" style="margin-top:1rem">
-          <button class="primary" data-action="open-worlds">World Hub</button>
+          <button class="primary" data-action="open-characters">Character roster</button>
           <button data-action="roll-event">Roll event</button>
-          <button data-action="open-story-ai">Story AI grind</button>
+          <button data-action="open-worlds">World Hub</button>
         </div>
       </div>
     </div>`,

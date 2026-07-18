@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createRosterCharacter } from '../engine/characters';
 import { createWorld } from '../engine/worlds';
 import type { PlayerBuild, SaveGame } from '../engine/types';
 import { resolveEventChoice, rollWorldEvent } from './events';
@@ -30,8 +31,9 @@ function stubSave(partial?: Partial<SaveGame>): SaveGame {
     trainedStats: {},
     formId: 'base',
   };
+  const character = createRosterCharacter(player, 42);
   return {
-    version: 3,
+    version: 4,
     player,
     relationships: {},
     flags: {},
@@ -46,6 +48,8 @@ function stubSave(partial?: Partial<SaveGame>): SaveGame {
     activeWorldId: null,
     currentEvent: null,
     developmentLog: [],
+    characters: [character],
+    activeCharacterId: character.id,
     ...partial,
   };
 }
@@ -59,15 +63,18 @@ describe('world events', () => {
     expect(event.choices.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('resolves a choice with reasoned gains', () => {
+  it('resolves a choice with reasoned gains on the active character', () => {
     const world = createWorld({ tone: 'discovery', seed: 7 });
     const save = stubSave({ worlds: [world], activeWorldId: world.id });
     const event = rollWorldEvent(save, world);
+    expect(event.body).toContain('Test');
     const before = playerPower(save.player).powerLevel;
     const result = resolveEventChoice(save, world, event, event.choices[0].id);
     expect(result.entry.reason.length).toBeGreaterThan(10);
+    expect(result.entry.characterName).toBe('Test');
     expect(result.entry.gains.length).toBeGreaterThan(0);
     expect(result.save.developmentLog?.[0]?.eventTitle).toBe(event.title);
+    expect(result.save.characters?.[0].developmentLog[0]?.eventTitle).toBe(event.title);
     const after = playerPower(result.save.player).powerLevel;
     expect(after).toBeGreaterThanOrEqual(before);
     expect(result.world.eventCount).toBe(world.eventCount + 1);
