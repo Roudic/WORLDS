@@ -312,6 +312,9 @@ export interface WorldEventChoice {
   travelWorldId?: string;
   /** Other roster character involved (meet / spar) */
   meetCharacterId?: string;
+  /** Generated narrative reasons (procedural events) */
+  reasonWin?: string;
+  reasonLose?: string;
 }
 
 export interface WorldEvent {

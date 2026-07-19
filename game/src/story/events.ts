@@ -23,6 +23,7 @@ import {
   raiseCeiling,
   type World,
 } from '../engine/worlds';
+import { generateRandomEvent } from './generator';
 
 export type { DevEntry, WorldEvent, WorldEventChoice };
 
@@ -519,23 +520,37 @@ export function rollWorldEvent(
   const worlds = save.worlds ?? [];
   const ctx = { world, player, rand, pl, others, worlds };
 
-  let indices = FACTORIES.map((_, i) => i);
-  if (prefer === 'battle') indices = [...BATTLE_IDX];
-  else if (prefer === 'meet') indices = others.length ? [...MEET_IDX] : [...BATTLE_IDX];
-  else if (prefer === 'travel') {
-    indices = worlds.length > 1 ? [...TRAVEL_IDX] : [...BATTLE_IDX];
-  } else {
-    if (world.focus === 'empower' || world.tone === 'war') {
-      indices = [...BATTLE_IDX, ...indices];
-    }
-    if (others.length) indices = [...MEET_IDX, ...indices];
-    if (worlds.length > 1) indices = [...TRAVEL_IDX, ...indices];
-  }
-
+  // The generative engine carries most rolls — assembled fresh each time,
+  // never the same script twice. Legacy factories stay as occasional spice.
   let event: WorldEvent | null = null;
-  for (let i = 0; i < 10 && !event; i++) {
-    const idx = pick(rand, indices);
-    event = FACTORIES[idx](ctx);
+  if (prefer === 'battle') {
+    event = generateRandomEvent(ctx, 'battle');
+    if (rand() < 0.3) {
+      const idx = pick(rand, BATTLE_IDX);
+      event = FACTORIES[idx](ctx) ?? event;
+    }
+  } else if (prefer === 'meet') {
+    const indices = others.length ? [...MEET_IDX] : [...BATTLE_IDX];
+    for (let i = 0; i < 6 && !event; i++) event = FACTORIES[pick(rand, indices)](ctx);
+    if (!event) event = generateRandomEvent(ctx);
+  } else if (prefer === 'travel') {
+    const indices = worlds.length > 1 ? [...TRAVEL_IDX] : [...BATTLE_IDX];
+    for (let i = 0; i < 6 && !event; i++) event = FACTORIES[pick(rand, indices)](ctx);
+    if (!event) event = generateRandomEvent(ctx);
+  } else {
+    if (rand() < 0.7) {
+      event = generateRandomEvent(ctx);
+    } else {
+      let indices = FACTORIES.map((_, i) => i);
+      if (world.focus === 'empower' || world.tone === 'war') {
+        indices = [...BATTLE_IDX, ...indices];
+      }
+      if (others.length) indices = [...MEET_IDX, ...indices];
+      if (worlds.length > 1) indices = [...TRAVEL_IDX, ...indices];
+      for (let i = 0; i < 10 && !event; i++) {
+        event = FACTORIES[pick(rand, indices)](ctx);
+      }
+    }
   }
   if (!event) event = FACTORIES[0](ctx)!;
 
@@ -689,14 +704,26 @@ export function resolveEventChoice(
 
   const gains: string[] = [];
   const lean = choice.lean ?? ['endurance'];
-  const amount = success ? (strong ? 14 : 9) : 4;
+  let amount = success ? (strong ? 14 : 9) : 4;
+
+  // Rebound Surge — survive a battle loss, come back sharper (anime rule)
+  const rebound = !!charFlags['Rebound.Ready'] || !!nextSave.flags['Rebound.Ready'];
+  if (rebound) {
+    amount *= 2;
+    delete charFlags['Rebound.Ready'];
+    delete nextSave.flags['Rebound.Ready'];
+  }
 
   for (const stat of lean) {
     player.trainedStats = trainStat(player.trainedStats, stat, amount);
     gains.push(`+${amount} ${stat}`);
   }
+  if (rebound) gains.push('Rebound Surge ×2');
 
-  const reason = buildReason(event, choice, success, world, roll.outcomeTier, player.name);
+  let reason = buildReason(event, choice, success, world, roll.outcomeTier, player.name);
+  if (rebound) {
+    reason = `Rebound Surge — the last defeat is still burning in ${player.name}'s muscles. ${reason}`;
+  }
 
   let worldNext = { ...world, eventCount: world.eventCount + 1 };
   worldNext = applyFocusAndChoice(worldNext, event, choice, success);
@@ -855,6 +882,9 @@ function buildReason(
   tier: string,
   who = 'You',
 ): string {
+  // Generated events carry their own reasons
+  if (success && choice.reasonWin) return choice.reasonWin;
+  if (!success && choice.reasonLose) return choice.reasonLose;
   const ok = success ? 'earned' : 'scar-earned';
   const bits: Record<string, string> = {
     spar_hard: success

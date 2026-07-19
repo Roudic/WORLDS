@@ -40,7 +40,7 @@ interface Fighter {
   phase: number;
   home: THREE.Vector3;
   // animation state
-  anim: 'idle' | 'lunge' | 'recoil' | 'ko' | 'cast';
+  anim: 'idle' | 'lunge' | 'recoil' | 'ko' | 'cast' | 'rush';
   animT: number;
   animTarget: THREE.Vector3 | null;
   hover: number;
@@ -87,6 +87,7 @@ export class ArenaScene {
   private processedLog = new Map<string, number>();
   private shake = 0;
   private hitStop = 0;
+  private punchIn = 0;
   private clashActive = false;
   private camPos = new THREE.Vector3(0, 8, 16);
   private camLook = new THREE.Vector3(0, 2, 0);
@@ -773,8 +774,10 @@ export class ArenaScene {
     if (kind === 'attack' && text.includes(' hits ') && actor && target) {
       const dmgMatch = /for (\d+) damage/.exec(text);
       const dmg = dmgMatch ? parseInt(dmgMatch[1], 10) : 0;
-      const melee = Math.random() < 0.45;
-      if (melee) this.spawnMeleeDash(actor, target, dmg);
+      const ranged = /shot|lance|burst|flare|rewrite|beam|wave/i.test(text);
+      const melee = ranged ? Math.random() < 0.25 : Math.random() < 0.8;
+      if (melee && dmg >= 8) this.spawnRushCombo(actor, target, dmg);
+      else if (melee) this.spawnMeleeDash(actor, target, dmg);
       else this.spawnKiBolt(actor, target, dmg);
       return;
     }
@@ -903,6 +906,92 @@ export class ArenaScene {
           m.opacity = Math.max(0, 0.3 - k * 0.3 - i * 0.03);
         });
         if (k >= 1) this.spawnImpact(to, actor.color, dmg, target);
+      },
+    });
+  }
+
+  /**
+   * Rush combo — the attacker blinks around the defender landing a rapid
+   * string of hits (teleport flashes, split damage numbers), then a final
+   * heavy blow with knockback. The anime melee exchange.
+   */
+  private spawnRushCombo(actor: Fighter, target: Fighter, dmg: number) {
+    const hits = Math.min(7, 3 + Math.floor(Math.random() * 2 + dmg / 14));
+    const per = Math.max(1, Math.floor(dmg / (hits + 1)));
+    const finalHit = dmg - per * (hits - 1);
+    const step = 0.16;
+    const tCenter = target.root.position.clone();
+    actor.anim = 'rush';
+    actor.animT = 0;
+    let done = 0;
+    let acc = 0;
+
+    this.addEffect({
+      kind: 'rush',
+      t: 0,
+      life: hits * step + 0.25,
+      objects: [],
+      onUpdate: (e, dt, k) => {
+        acc += dt;
+        // hold the attacker near the target, orbiting per hit
+        const ang = (done / hits) * Math.PI * 2 + Math.PI / 4;
+        const holdPos = new THREE.Vector3(
+          tCenter.x + Math.cos(ang) * 1.25,
+          0.15 + Math.sin(done * 1.7) * 0.55,
+          tCenter.z + Math.sin(ang) * 1.25,
+        );
+        actor.root.position.lerp(holdPos, 0.55);
+        actor.root.lookAt(tCenter.x, actor.root.position.y + 1.2, tCenter.z);
+
+        if (acc >= step && done < hits) {
+          acc = 0;
+          done++;
+          const isFinal = done === hits;
+          const hitAt = this.chestOf(target).add(
+            new THREE.Vector3((Math.random() - 0.5) * 0.7, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.7),
+          );
+          // teleport flash where the attacker was
+          const blink = this.glowSprite(actor.color, 1.6, 0.7);
+          blink.position.copy(actor.root.position).add(new THREE.Vector3(0, 1.3, 0));
+          this.addEffect({
+            kind: 'blink',
+            t: 0,
+            life: 0.22,
+            objects: [blink],
+            onUpdate: (_e2, _dt2, k2) => {
+              (blink.material as THREE.SpriteMaterial).opacity = Math.max(0, 0.7 - k2);
+              blink.scale.setScalar(1.6 + k2 * 1.6);
+            },
+          });
+          if (isFinal) {
+            this.spawnImpact(hitAt, actor.color, finalHit, target);
+            this.punchIn = 0.65;
+            this.shake = Math.max(this.shake, 0.65);
+          } else {
+            // quick small hit
+            this.hitStop = Math.max(this.hitStop, 0.03);
+            this.shake = Math.max(this.shake, 0.18);
+            target.anim = 'recoil';
+            target.animT = 0;
+            const spark = this.glowSprite(0xffffff, 1.4, 1);
+            spark.position.copy(hitAt);
+            this.addEffect({
+              kind: 'minihit',
+              t: 0,
+              life: 0.18,
+              objects: [spark],
+              onUpdate: (_e3, _dt3, k3) => {
+                (spark.material as THREE.SpriteMaterial).opacity = Math.max(0, 1 - k3 * 1.6);
+                spark.scale.setScalar(1.4 + k3 * 1.4);
+              },
+            });
+            this.spawnDamageNumber(hitAt, String(per), 0xffffff);
+          }
+        }
+        if (k >= 1) {
+          actor.anim = 'idle';
+        }
+        void e;
       },
     });
   }
@@ -1272,6 +1361,18 @@ export class ArenaScene {
         f.anim = 'idle';
         f.animTarget = null;
       }
+    } else if (f.anim === 'rush') {
+      // position driven by the rush effect; fists fly
+      f.animT += dt;
+      const punch = Math.sin(f.animT * 34);
+      f.armL.rotation.x = -1.4 + punch * 0.8;
+      f.armR.rotation.x = -1.4 - punch * 0.8;
+      f.armL.rotation.z = 0.1;
+      f.armR.rotation.z = -0.1;
+      (f.armL.getObjectByName('lower') as THREE.Group).rotation.x = -0.4 + punch * 0.3;
+      (f.armR.getObjectByName('lower') as THREE.Group).rotation.x = -0.4 - punch * 0.3;
+      f.torso.rotation.x = 0.28;
+      f.torso.rotation.y = punch * 0.25;
     } else if (f.anim === 'cast') {
       f.animT += dt;
       const k = Math.min(1, f.animT / 0.3);
@@ -1353,7 +1454,7 @@ export class ArenaScene {
     this.camPos.lerp(targetPos, this.mode === 'combat' ? 0.06 : 0.03);
     this.camLook.lerp(targetLook, 0.08);
 
-    // shake
+    // shake + punch-in (camera lunges toward the action on heavy hits)
     let sx = 0;
     let sy = 0;
     if (this.shake > 0.01) {
@@ -1361,7 +1462,17 @@ export class ArenaScene {
       sy = (Math.random() - 0.5) * this.shake * 0.5;
       this.shake *= Math.pow(0.02, dt); // fast decay
     }
-    this.camera.position.set(this.camPos.x + sx, this.camPos.y + sy, this.camPos.z);
+    let px = 0;
+    let py = 0;
+    let pz = 0;
+    if (this.punchIn > 0.01) {
+      const dir = this.camLook.clone().sub(this.camPos).normalize();
+      px = dir.x * this.punchIn * 3.2;
+      py = dir.y * this.punchIn * 3.2;
+      pz = dir.z * this.punchIn * 3.2;
+      this.punchIn *= Math.pow(0.05, dt);
+    }
+    this.camera.position.set(this.camPos.x + sx + px, this.camPos.y + sy + py, this.camPos.z + pz);
     this.camera.lookAt(this.camLook);
   }
 

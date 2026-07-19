@@ -1071,6 +1071,7 @@ function finishCombat(state: AppState): AppState {
       gains.push(`+${amount} ${s}`);
     }
     if (victory) save.player.resolve += 1;
+    else save.flags['Rebound.Ready'] = true; // survive a loss → next gain doubles
     save.trainCount = (save.trainCount ?? 0) + 1;
     save.player.level = 3 + Math.floor((save.trainCount ?? 0) / 4);
     const ch = activeCharacter(save);
