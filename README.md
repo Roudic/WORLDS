@@ -6,7 +6,17 @@ Single-player, party-based cinematic tactical RPG — playable browser vertical 
 
 **Central rule:** Anything can happen, but everything does not have the same chance of happening.
 
-## Play
+## Play on PC (Unreal Engine 5)
+
+The production engine target lives at [`unreal/Riftwake/`](unreal/Riftwake/):
+
+1. Install **Unreal Engine 5.4+** and Visual Studio 2022 (C++ game workload) on Windows.
+2. Open `unreal/Riftwake/Riftwake.uproject` → rebuild modules → **Play**.
+3. Full setup, controls, and packaging: [`unreal/Riftwake/README.md`](unreal/Riftwake/README.md).
+
+Power Level, worlds, generative events, roster, and turn combat are ported to C++ with a procedural arena. This cloud agent cannot run the Unreal Editor — build and package the `.exe` on your PC.
+
+## Play in browser (vertical slice)
 
 ```bash
 cd game
@@ -48,6 +58,7 @@ Production build is published from `game/` (Vite → `dist`).
 
 ```text
 docs/                         Design bible
+unreal/Riftwake/              UE5.4 C++ PC project (open .uproject on Windows)
 game/
   src/engine/                 Dice, attributes, combat, clash, ascension
   src/data/                   Techniques, companions, encounters, story
@@ -55,4 +66,4 @@ game/
   src/ui/                     Screens (title, create, scene, combat, ending)
 ```
 
-This is a complete playable vertical slice implementing the foundation systems in TypeScript/Vite. Unreal Engine 5 remains the long-term production target from the design doc; this repo ships the full rules-and-story loop now.
+Browser (`game/`) and Unreal (`unreal/Riftwake/`) both implement the foundation loop. Use Unreal on PC for the native build; the web slice stays for fast iteration.

@@ -5,7 +5,7 @@
 ## Game Foundation v0.1
 
 **Genre:** Single-player, party-based, cinematic tactical RPG  
-**Engine target:** Unreal Engine 5  
+**Engine target:** Unreal Engine 5 — PC project at `unreal/Riftwake/Riftwake.uproject` (C++ vertical slice; open on Windows with UE 5.4+)  
 **View:** Third-person exploration with a tactical combat camera  
 **Core fantasy:** Begin as a gifted but unproven fighter in a world where martial discipline, magic, technology, and unstable reality all collide. Build a party, make choices, master techniques, unlock original ascension forms, and rise from local conflicts to reality-shaping battles.
 
