@@ -472,6 +472,18 @@ button:disabled {
   padding-bottom: 1rem;
 }
 
+/* On wide screens keep HUD to the left so the 3D battle stays visible */
+@media (min-width: 1040px) {
+  .combat-hud {
+    width: min(560px, 46vw);
+    margin-right: auto;
+  }
+
+  .combat-stage.over-3d .combat-panel {
+    background: rgba(10, 16, 24, 0.66);
+  }
+}
+
 .combat-stage.over-3d .combat-panel,
 .clash-stage.over-3d .clash-panel {
   background: rgba(10, 16, 24, 0.72);
@@ -482,6 +494,12 @@ button:disabled {
 .clash-stage.over-3d {
   max-width: 560px;
   margin: 2rem auto;
+}
+
+@media (min-width: 1040px) {
+  .clash-stage.over-3d {
+    margin: 2rem 0 2rem 3rem;
+  }
 }
 
 .combat-backdrop {
