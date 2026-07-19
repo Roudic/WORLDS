@@ -214,7 +214,16 @@ function handleClick(
       dispatch({ type: 'RAISE_CEILING' });
       break;
     case 'roll-event':
-      dispatch({ type: 'ROLL_EVENT' });
+      dispatch({ type: 'ROLL_EVENT', prefer: 'any' });
+      break;
+    case 'roll-battle':
+      dispatch({ type: 'ROLL_EVENT', prefer: 'battle' });
+      break;
+    case 'travel-to':
+      if (payload) dispatch({ type: 'TRAVEL_TO_WORLD', worldId: payload });
+      break;
+    case 'meet-character':
+      if (payload) dispatch({ type: 'MEET_CHARACTER', characterId: payload });
       break;
     case 'resolve-event':
       if (payload) dispatch({ type: 'RESOLVE_EVENT', choiceId: payload });
@@ -384,6 +393,39 @@ function renderCharacters(state: AppState): string {
            <button data-action="open-world-create">Create world</button>`
         : '';
 
+  const travelButtons =
+    ch && worlds.length > 1
+      ? `<div class="chip-row">
+          ${worlds
+            .filter((w) => w.id !== ch.worldId)
+            .map(
+              (w) =>
+                `<button data-action="travel-to" data-payload="${w.id}">Travel → ${escapeHtml(w.name)}</button>`,
+            )
+            .join('')}
+        </div>`
+      : worlds.length <= 1
+        ? `<p class="muted">Create another world to open travel roads (safe path or hot road with battle).</p>`
+        : '';
+
+  const hereWith = ch?.worldId
+    ? (state.save.characters ?? []).filter(
+        (c) => c.id !== ch.id && c.worldId === ch.worldId,
+      )
+    : [];
+  const meetButtons = ch?.worldId
+    ? hereWith.length
+      ? `<div class="chip-row">
+          ${hereWith
+            .map(
+              (c) =>
+                `<button data-action="meet-character" data-payload="${c.id}">Meet ${escapeHtml(c.build.name)}</button>`,
+            )
+            .join('')}
+        </div>`
+      : `<p class="muted">No other roster characters on this world. Place or travel someone here to meet.</p>`
+    : `<p class="muted">Station them first to meet others on the same world.</p>`;
+
   const log = (ch?.developmentLog ?? state.save.developmentLog ?? []).slice(0, 6);
   const journal =
     log.length === 0
@@ -395,6 +437,7 @@ function renderCharacters(state: AppState): string {
           )
           .join('')}</ul>`;
 
+  const canAct = !!(ch && (ch.worldId || worlds[0]));
   const manage = ch
     ? `<div class="panel world-manage">
         <div class="scene-head">
@@ -405,13 +448,19 @@ function renderCharacters(state: AppState): string {
           playerPower(ch.build, { formId: ch.build.formId ?? 'base' }).powerLevel,
         )}</strong></p>
         <p class="muted">Convictions: ${ch.build.convictions.map((c) => CONVICTIONS[c].name).join(' / ')}</p>
-        <h3>Station on a world</h3>
-        <p class="muted">Random events happen around whoever is placed here. Switch characters anytime to develop them.</p>
+        <h3>Station</h3>
+        <p class="muted">Instant place (no road event). Use Travel for roads that can turn into battles.</p>
         ${placeButtons}
-        <div class="actions" style="margin-top:1rem">
-          <button class="primary" data-action="roll-event" ${ch.worldId || worlds[0] ? '' : 'disabled'}>Roll event around them</button>
+        <h3>Travel</h3>
+        ${travelButtons}
+        <h3>Meet</h3>
+        ${meetButtons}
+        <h3>Start events</h3>
+        <div class="actions" style="margin-top:0.5rem">
+          <button class="primary" data-action="roll-event" ${canAct ? '' : 'disabled'}>Any event</button>
+          <button data-action="roll-battle" ${canAct ? '' : 'disabled'}>Battle event</button>
           <button data-action="open-sheet">Stats</button>
-          <button data-action="open-worlds">Manage worlds</button>
+          <button data-action="open-worlds">Worlds</button>
         </div>
         ${
           ch.currentEvent
@@ -424,8 +473,8 @@ function renderCharacters(state: AppState): string {
   return shell(
     `<div class="worlds-layout">
       <div class="panel">
-        <div class="scene-head"><h2>Character Roster</h2><span class="meta">Create · place · develop anytime</span></div>
-        <p class="lede">Multiple characters live across your worlds. Events find the one you’re developing — jump to anyone whenever you want.</p>
+        <div class="scene-head"><h2>Character Roster</h2><span class="meta">Travel · meet · battle · follow</span></div>
+        <p class="lede">Station people, send them on roads, meet allies on the same world, and roll battle events into the combat system.</p>
         ${list}
         <div class="actions" style="margin-top:1rem">
           <button class="primary" data-action="open-create-character">New character</button>
@@ -521,7 +570,8 @@ function renderWorlds(state: AppState): string {
           ).join('')}
         </div>
         <div class="actions" style="margin-top:1rem">
-          <button class="primary" data-action="roll-event">Roll event (active character)</button>
+          <button class="primary" data-action="roll-battle">Battle event</button>
+          <button data-action="roll-event">Any event</button>
           <button data-action="raise-ceiling">Raise power ceiling</button>
           <button data-action="open-world-create">Create another world</button>
           <button data-action="open-characters">Character roster</button>
@@ -625,7 +675,7 @@ function renderEvent(state: AppState): string {
         <span class="meta">${escapeHtml(event.tag)}${ch ? ` · ${escapeHtml(ch.build.name)}` : ''}${world ? ` · ${escapeHtml(world.name)}` : ''}</span>
       </div>
       <p class="lede">${escapeHtml(event.body)}</p>
-      <p class="muted">Pick a path — dice decide the margin; the gain writes onto this character with a reason.</p>
+      <p class="muted">Pick a path — dice decide the margin. Battle choices drop into combat; travel moves worlds; meets can spar roster mates.</p>
       <div class="choice-stack">${choices}</div>
       <div class="actions" style="margin-top:1rem">
         <button data-action="open-characters">Back to roster</button>

@@ -5,7 +5,8 @@ import {
   playerToCombatant,
   type CombatState,
 } from '../engine/combat';
-import type { PlayerBuild } from '../engine/types';
+import { playerPower } from '../engine/power';
+import type { Attributes, PlayerBuild, PowerBand } from '../engine/types';
 
 function partyCombatants(player: PlayerBuild, partyIds: string[]) {
   const allies = [playerToCombatant(player)];
@@ -15,12 +16,57 @@ function partyCombatants(player: PlayerBuild, partyIds: string[]) {
   return allies;
 }
 
+function clampAttr(n: number): number {
+  return Math.max(6, Math.min(20, Math.round(n)));
+}
+
+function scaleAttrs(base: Attributes, delta: number): Attributes {
+  return {
+    might: clampAttr(base.might + delta),
+    agility: clampAttr(base.agility + delta),
+    control: clampAttr(base.control + delta),
+    grit: clampAttr(base.grit + delta),
+    intellect: clampAttr(base.intellect + delta),
+    will: clampAttr(base.will + delta),
+    presence: clampAttr(base.presence + delta),
+  };
+}
+
+function bandForPl(pl: number): PowerBand {
+  if (pl >= 12000) return 'astral';
+  if (pl >= 6000) return 'worldClass';
+  if (pl >= 2500) return 'ascendant';
+  if (pl >= 900) return 'awakened';
+  return 'mortal';
+}
+
+function rosterRivalEnemy(rival: PlayerBuild): ReturnType<typeof makeEnemy> {
+  const c = playerToCombatant(rival);
+  return {
+    ...c,
+    id: 'roster_rival',
+    isPlayer: false,
+    isCompanion: false,
+    aiProfile: 'tactical',
+    output: Math.min(0.95, Math.max(0.55, rival.formId && rival.formId !== 'base' ? 0.9 : 0.7)),
+    ascended: !!(rival.formId && rival.formId !== 'base'),
+  };
+}
+
+export interface EncounterOpts {
+  rivalBuild?: PlayerBuild;
+  worldName?: string;
+}
+
 export function buildEncounter(
   id: string,
   player: PlayerBuild,
   partyIds: string[],
+  opts: EncounterOpts = {},
 ): CombatState | null {
   const allies = partyCombatants(player, partyIds);
+  const pl = playerPower(player, { formId: player.formId ?? 'base' }).powerLevel;
+  const place = opts.worldName ?? 'the field';
 
   switch (id) {
     case 'entry_bout':
@@ -297,6 +343,121 @@ export function buildEncounter(
         riftActive: true,
         tags: ['talk_ok'],
       });
+
+    case 'world_ambush':
+      return createEncounter({
+        id,
+        name: `Ambush — ${place}`,
+        description: 'Travelers and locals collide. Power decides the road.',
+        allies,
+        enemies: [
+          makeEnemy({
+            id: 'ambusher',
+            name: 'Road Ambusher',
+            attributes: scaleAttrs(player.attributes, -1),
+            techniques: ['pulse_strike', 'slipstep', 'overdrive_burst'],
+            powerBand: bandForPl(pl * 0.7),
+            level: Math.max(2, player.level - 1),
+            position: 5,
+            output: 0.65,
+          }),
+        ],
+        objective: { id: 'win', label: 'Break the ambush', type: 'defeat_all' },
+        tags: ['sandbox', 'battle'],
+      });
+
+    case 'world_duel':
+      return createEncounter({
+        id,
+        name: `Public Duel — ${place}`,
+        description: 'A scanner duel. Crowds watch. Output climbs.',
+        allies,
+        enemies: [
+          makeEnemy({
+            id: 'duelist',
+            name: 'Wandering Duelist',
+            attributes: scaleAttrs(player.attributes, 1),
+            techniques: ['rival_surge', 'pulse_strike', 'overdrive_burst'],
+            powerBand: bandForPl(pl),
+            level: player.level + 1,
+            position: 5,
+            aiProfile: 'aggressive',
+            output: 0.88,
+          }),
+        ],
+        objective: { id: 'win', label: 'Win the duel', type: 'defeat_all' },
+        tags: ['sandbox', 'battle', 'rival'],
+      });
+
+    case 'world_skirmish':
+      return createEncounter({
+        id,
+        name: `Skirmish — ${place}`,
+        description: 'Two threats press at once. Footwork and targets matter.',
+        allies,
+        enemies: [
+          makeEnemy({
+            id: 'skirm_a',
+            name: 'Scar Banner Blade',
+            attributes: scaleAttrs(player.attributes, 0),
+            techniques: ['pulse_strike', 'overdrive_burst'],
+            powerBand: bandForPl(pl * 0.85),
+            level: player.level,
+            position: 5,
+            output: 0.7,
+          }),
+          makeEnemy({
+            id: 'skirm_b',
+            name: 'Null Choir Scout',
+            attributes: scaleAttrs(player.attributes, -1),
+            techniques: ['slipstep', 'drone_shot', 'rift_lance'],
+            powerBand: bandForPl(pl * 0.75),
+            level: Math.max(2, player.level - 1),
+            position: 6,
+            aiProfile: 'tactical',
+            output: 0.6,
+          }),
+        ],
+        objective: { id: 'win', label: 'Clear the skirmish', type: 'defeat_all' },
+        tags: ['sandbox', 'battle'],
+      });
+
+    case 'world_hunt':
+      return createEncounter({
+        id,
+        name: `Hunt — ${place}`,
+        description: 'Something above your band is hunting the district.',
+        allies,
+        enemies: [
+          makeEnemy({
+            id: 'hunter',
+            name: 'Ceiling Hunter',
+            attributes: scaleAttrs(player.attributes, 2),
+            techniques: ['rival_surge', 'rift_lance', 'overdrive_burst', 'aegis_wall'],
+            powerBand: bandForPl(pl * 1.2),
+            level: player.level + 2,
+            position: 5,
+            aiProfile: 'volatile',
+            output: 0.92,
+          }),
+        ],
+        objective: { id: 'win', label: 'Survive the hunt', type: 'defeat_all' },
+        tags: ['sandbox', 'battle'],
+      });
+
+    case 'roster_spar': {
+      const rival = opts.rivalBuild;
+      if (!rival) return null;
+      return createEncounter({
+        id,
+        name: `Roster Spar — ${rival.name}`,
+        description: `${player.name} and ${rival.name} test each other in ${place}.`,
+        allies,
+        enemies: [rosterRivalEnemy(rival)],
+        objective: { id: 'win', label: 'Win the spar (or endure)', type: 'defeat_all' },
+        tags: ['sandbox', 'battle', 'meet', 'talk_ok'],
+      });
+    }
 
     default:
       return null;

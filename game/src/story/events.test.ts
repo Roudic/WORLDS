@@ -79,4 +79,19 @@ describe('world events', () => {
     expect(after).toBeGreaterThanOrEqual(before);
     expect(result.world.eventCount).toBe(world.eventCount + 1);
   });
+
+  it('can prefer battle events that queue combat', () => {
+    const world = createWorld({ tone: 'war', seed: 3 });
+    world.focus = 'empower';
+    const save = stubSave({ worlds: [world], activeWorldId: world.id });
+    const event = rollWorldEvent(save, world, 'battle');
+    expect(event.kind === 'battle' || event.tag === 'battle' || event.tag === 'rivalry').toBe(
+      true,
+    );
+    const fight = event.choices.find((c) => c.startCombat);
+    expect(fight?.startCombat).toBeTruthy();
+    const result = resolveEventChoice(save, world, event, fight!.id);
+    expect(result.combatId).toBe(fight!.startCombat);
+    expect(result.save.pendingCombat?.encounterId).toBe(fight!.startCombat);
+  });
 });

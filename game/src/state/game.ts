@@ -6,6 +6,7 @@ import { isSuccess, makeCheck } from '../engine/dice';
 import type {
   ConvictionId,
   EndingId,
+  EventKind,
   FluxBias,
   PlayerBuild,
   Relationship,
@@ -14,6 +15,7 @@ import type {
   WorldFocus,
   WorldTone,
 } from '../engine/types';
+import { trainStat } from '../engine/power';
 import {
   COMPANIONS,
   CONVICTIONS,
@@ -52,7 +54,12 @@ import {
   setWorldFocus,
 } from '../engine/worlds';
 import { applyAiChoice, generateAiHub, openStoryAi } from '../story/director';
-import { resolveEventChoice, rollWorldEvent } from '../story/events';
+import {
+  buildMeetEvent,
+  buildTravelEvent,
+  resolveEventChoice,
+  rollWorldEvent,
+} from '../story/events';
 
 const SAVE_KEY = 'riftwake.save.v2';
 
@@ -159,6 +166,7 @@ function migrateSave(save: SaveGame): SaveGame {
   save.activeWorldId = save.activeWorldId ?? save.worlds[0]?.id ?? null;
   save.currentEvent = save.currentEvent ?? null;
   save.developmentLog = save.developmentLog ?? [];
+  save.pendingCombat = save.pendingCombat ?? null;
   save = ensureRoster(save);
   save.version = 4;
   if (save.sceneId === 'ai_runtime' && !save.aiBeat) {
@@ -380,10 +388,12 @@ export function startCombatFrom(
   state: AppState,
   combatId: string,
   returnSceneId: string,
+  opts?: { rivalCharacterId?: string },
 ): AppState {
   if (!state.save) return state;
-  let player = state.save.player;
-  if (state.save.flags['Ascension.TemperedWake']) {
+  const saveRef = state.save;
+  let player = saveRef.player;
+  if (saveRef.flags['Ascension.TemperedWake']) {
     player = {
       ...player,
       ascensionUnlocked: true,
@@ -391,17 +401,28 @@ export function startCombatFrom(
       catalystReady: true,
     };
   }
-  const combat = buildEncounter(combatId, player, state.save.partyIds);
+  const rivalId = opts?.rivalCharacterId ?? saveRef.pendingCombat?.rivalCharacterId;
+  const rivalBuild = rivalId
+    ? saveRef.characters?.find((c) => c.id === rivalId)?.build
+    : undefined;
+  const stationedId = activeCharacter(saveRef)?.worldId;
+  const worldName =
+    activeWorld(saveRef)?.name ??
+    saveRef.worlds?.find((w) => w.id === stationedId)?.name;
+  const combat = buildEncounter(combatId, player, saveRef.partyIds, {
+    rivalBuild,
+    worldName,
+  });
   if (!combat) {
     return { ...state, toast: `Missing encounter ${combatId}` };
   }
   // Auto-ascend if already in a multiplied form
   let c = combat;
-  const form = state.save.player.formId;
+  const form = saveRef.player.formId;
   if (
     form &&
     form !== 'base' &&
-    (state.save.flags['Ascension.TemperedWake'] || state.save.player.ascensionUnlocked)
+    (saveRef.flags['Ascension.TemperedWake'] || saveRef.player.ascensionUnlocked)
   ) {
     c = activateAscension(
       c,
@@ -409,7 +430,7 @@ export function startCombatFrom(
       form === 'rift_sync' ? 'rift_sync' : 'tempered_wake',
       true,
     );
-  } else if (state.save.flags['Ascension.TemperedWake']) {
+  } else if (saveRef.flags['Ascension.TemperedWake']) {
     c = activateAscension(c, 'player', 'tempered_wake', true);
   }
   // Advance any non-player turns (companions / stragglers) until you can act
@@ -419,7 +440,7 @@ export function startCombatFrom(
     screen: c.pendingClash ? 'clash' : 'combat',
     combat: c,
     returnSceneId,
-    save: { ...state.save, player },
+    save: { ...saveRef, player },
     toast: c.pendingClash
       ? 'Power clash! Choose how you meet their attack.'
       : 'Your turn — attack, power up, or scan their rating.',
@@ -615,34 +636,34 @@ export function reduce(state: AppState, action: Action): AppState {
       };
     }
     case 'ROLL_EVENT': {
+      return beginEvent(state, action.prefer ?? 'any');
+    }
+    case 'TRAVEL_TO_WORLD': {
       if (!state.save) return state;
       const ch = activeCharacter(state.save);
-      if (!ch) {
+      if (!ch) return { ...state, toast: 'Select a character first.' };
+      const fromId = ch.worldId ?? state.save.activeWorldId;
+      const from = (state.save.worlds ?? []).find((w) => w.id === fromId);
+      const dest = (state.save.worlds ?? []).find((w) => w.id === action.worldId);
+      if (!dest) return { ...state, toast: 'Destination world missing.' };
+      if (!from) {
+        // No current world — just place them
+        const save = placeCharacter(state.save, ch.id, dest.id);
+        if (!save) return state;
+        persistSave(save);
         return {
           ...state,
-          toast: 'Create a character first.',
-          screen: 'create',
-          createMode: 'roster',
+          save,
+          screen: 'characters',
+          toast: `${ch.build.name} arrives on ${dest.name}.`,
         };
       }
-      // Events happen around the character on their stationed world
-      const worldId = ch.worldId ?? state.save.activeWorldId;
-      const world = (state.save.worlds ?? []).find((w) => w.id === worldId) ?? null;
-      if (!world) {
-        return {
-          ...state,
-          toast: 'Place this character on a world first (or create a world).',
-          screen: (state.save.worlds?.length ?? 0) ? 'characters' : 'world_create',
-        };
+      if (from.id === dest.id) {
+        return { ...state, toast: 'Already on that world.' };
       }
-      // Ensure they're stationed when rolling from an active world fallback
       let save = state.save;
-      if (!ch.worldId) {
-        const placed = placeCharacter(save, ch.id, world.id);
-        if (placed) save = placed;
-      }
-      save = { ...save, activeWorldId: world.id };
-      const event = rollWorldEvent(save, world);
+      save = { ...save, activeWorldId: from.id };
+      const event = buildTravelEvent(save, from, dest);
       const updated = activeCharacter(save);
       if (updated) {
         save = patchCharacter(save, { ...updated, currentEvent: event });
@@ -654,8 +675,35 @@ export function reduce(state: AppState, action: Action): AppState {
         ...state,
         save,
         screen: 'event',
-        lastDiceText: null,
-        toast: `Event finds ${ch.build.name} on ${world.name}.`,
+        toast: `${ch.build.name} sets out for ${dest.name}.`,
+      };
+    }
+    case 'MEET_CHARACTER': {
+      if (!state.save) return state;
+      const ch = activeCharacter(state.save);
+      if (!ch?.worldId) {
+        return { ...state, toast: 'Place your character on a world first.' };
+      }
+      const other = (state.save.characters ?? []).find((c) => c.id === action.characterId);
+      if (!other) return { ...state, toast: 'Character not found.' };
+      if (other.worldId !== ch.worldId) {
+        return {
+          ...state,
+          toast: `${other.build.name} is not on this world — travel them here, or travel to meet.`,
+        };
+      }
+      const world = (state.save.worlds ?? []).find((w) => w.id === ch.worldId);
+      if (!world) return state;
+      const event = buildMeetEvent(state.save, world, other.id);
+      if (!event) return state;
+      let save = state.save;
+      save = patchCharacter(save, { ...ch, currentEvent: event });
+      persistSave(save);
+      return {
+        ...state,
+        save,
+        screen: 'event',
+        toast: `${ch.build.name} crosses paths with ${other.build.name}.`,
       };
     }
     case 'RESOLVE_EVENT': {
@@ -667,10 +715,23 @@ export function reduce(state: AppState, action: Action): AppState {
       const world = (state.save.worlds ?? []).find((w) => w.id === worldId) ?? activeWorld(state.save);
       if (!world) return { ...state, toast: 'No world for this event.', screen: 'worlds' };
       const result = resolveEventChoice(state.save, world, event, action.choiceId);
-      const save = syncActiveCharacter(
+      let save = syncActiveCharacter(
         patchActiveWorld({ ...result.save, currentEvent: null }, result.world),
       );
       persistSave(save);
+      if (result.combatId) {
+        return startCombatFrom(
+          {
+            ...state,
+            save,
+            lastDiceText: result.diceText,
+            toast: result.toast,
+          },
+          result.combatId,
+          'characters',
+          { rivalCharacterId: result.rivalCharacterId },
+        );
+      }
       return {
         ...state,
         save,
@@ -930,10 +991,59 @@ function flushPlayerToRoster(save: SaveGame): SaveGame {
   });
 }
 
+function beginEvent(state: AppState, prefer: EventKind | 'any'): AppState {
+  if (!state.save) return state;
+  const ch = activeCharacter(state.save);
+  if (!ch) {
+    return {
+      ...state,
+      toast: 'Create a character first.',
+      screen: 'create',
+      createMode: 'roster',
+    };
+  }
+  const worldId = ch.worldId ?? state.save.activeWorldId;
+  const world = (state.save.worlds ?? []).find((w) => w.id === worldId) ?? null;
+  if (!world) {
+    return {
+      ...state,
+      toast: 'Place this character on a world first (or create a world).',
+      screen: (state.save.worlds?.length ?? 0) ? 'characters' : 'world_create',
+    };
+  }
+  let save = state.save;
+  if (!ch.worldId) {
+    const placed = placeCharacter(save, ch.id, world.id);
+    if (placed) save = placed;
+  }
+  save = { ...save, activeWorldId: world.id };
+  const event = rollWorldEvent(save, world, prefer);
+  const updated = activeCharacter(save);
+  if (updated) save = patchCharacter(save, { ...updated, currentEvent: event });
+  else save = { ...save, currentEvent: event };
+  persistSave(save);
+  const label =
+    prefer === 'battle'
+      ? 'Battle event'
+      : prefer === 'meet'
+        ? 'Meeting'
+        : prefer === 'travel'
+          ? 'Travel beat'
+          : 'Event';
+  return {
+    ...state,
+    save,
+    screen: 'event',
+    lastDiceText: null,
+    toast: `${label} finds ${ch.build.name} on ${world.name}.`,
+  };
+}
+
 function finishCombat(state: AppState): AppState {
   if (!state.save || !state.combat) return state;
   let save = structuredClone(state.save);
   const victory = state.combat.victory;
+  const sandbox = state.combat.tags.includes('sandbox');
   save.log.push(
     victory
       ? `Combat won: ${state.combat.name}`
@@ -947,6 +1057,53 @@ function finishCombat(state: AppState): AppState {
     save.player.resolve = player.resolve;
     if (player.pressure >= 6) save.flags['Pressure.High'] = true;
   }
+
+  // Sandbox battle rewards — combat earns reasoned gains
+  if (sandbox) {
+    const amount = victory ? 12 : 5;
+    const stats = victory
+      ? (['offense', 'strength', 'endurance'] as const)
+      : (['endurance', 'resistance'] as const);
+    save.player.trainedStats = save.player.trainedStats ?? {};
+    const gains: string[] = [];
+    for (const s of stats) {
+      save.player.trainedStats = trainStat(save.player.trainedStats, s, amount);
+      gains.push(`+${amount} ${s}`);
+    }
+    if (victory) save.player.resolve += 1;
+    save.trainCount = (save.trainCount ?? 0) + 1;
+    save.player.level = 3 + Math.floor((save.trainCount ?? 0) / 4);
+    const ch = activeCharacter(save);
+    const world =
+      (save.worlds ?? []).find((w) => w.id === ch?.worldId) ?? activeWorld(save);
+    const entry = {
+      id: `dev_b_${Date.now().toString(36)}`,
+      at: Date.now(),
+      characterId: ch?.id,
+      characterName: save.player.name,
+      worldId: world?.id ?? '',
+      worldName: world?.name ?? 'the field',
+      eventTitle: state.combat.name,
+      reason: victory
+        ? `${save.player.name} won ${state.combat.name} — battle stats rose because the fight was real`
+        : `${save.player.name} survived ${state.combat.name} — Endurance/Resistance from eating the loss`,
+      gains,
+    };
+    save.developmentLog = [entry, ...(save.developmentLog ?? [])].slice(0, 80);
+    save.log.push(`${entry.reason} (${gains.join(', ')})`);
+    const active = activeCharacter(save);
+    if (active) {
+      save = patchCharacter(save, {
+        ...active,
+        build: structuredClone(save.player),
+        trainCount: save.trainCount ?? active.trainCount,
+        developmentLog: [entry, ...active.developmentLog].slice(0, 60),
+        currentEvent: null,
+      });
+    }
+  }
+
+  save.pendingCombat = null;
   save = flushPlayerToRoster(save);
 
   if (!victory && state.combat.id.startsWith('final')) {
@@ -958,6 +1115,21 @@ function finishCombat(state: AppState): AppState {
       combat: null,
       screen: 'ending',
       endingId: 'lose',
+    };
+  }
+
+  // Sandbox / character-hub battles return to roster
+  if (sandbox || state.returnSceneId === 'characters') {
+    persistSave(save);
+    return {
+      ...state,
+      save,
+      combat: null,
+      screen: 'characters',
+      returnSceneId: null,
+      toast: victory
+        ? 'Battle won — gains logged with a reason.'
+        : 'Battle lost — scar gains still count.',
     };
   }
 
@@ -1007,8 +1179,10 @@ export type Action =
   | { type: 'SELECT_WORLD'; worldId: string }
   | { type: 'SET_WORLD_FOCUS'; focus: WorldFocus }
   | { type: 'RAISE_CEILING' }
-  | { type: 'ROLL_EVENT' }
+  | { type: 'ROLL_EVENT'; prefer?: EventKind | 'any' }
   | { type: 'RESOLVE_EVENT'; choiceId: string }
+  | { type: 'TRAVEL_TO_WORLD'; worldId: string }
+  | { type: 'MEET_CHARACTER'; characterId: string }
   | { type: 'OPEN_CHARACTERS' }
   | { type: 'OPEN_CREATE_CAMPAIGN' }
   | { type: 'OPEN_CREATE_CHARACTER' }

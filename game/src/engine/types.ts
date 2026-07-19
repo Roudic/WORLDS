@@ -288,6 +288,8 @@ export interface ManagedWorld {
   createdAt: number;
 }
 
+export type EventKind = 'story' | 'battle' | 'meet' | 'travel';
+
 export interface WorldEventChoice {
   id: string;
   label: string;
@@ -304,12 +306,19 @@ export interface WorldEventChoice {
     | 'force'
   >;
   convictionTouch?: string;
+  /** Start a combat encounter after resolving this choice */
+  startCombat?: string;
+  /** Move the active character to this world id */
+  travelWorldId?: string;
+  /** Other roster character involved (meet / spar) */
+  meetCharacterId?: string;
 }
 
 export interface WorldEvent {
   id: string;
   title: string;
   tag: string;
+  kind?: EventKind;
   body: string;
   choices: WorldEventChoice[];
 }
@@ -363,4 +372,9 @@ export interface SaveGame {
   /** Multi-character roster */
   characters?: RosterCharacter[];
   activeCharacterId?: string | null;
+  /** Sandbox battle queued from an event (optional rival from roster) */
+  pendingCombat?: {
+    encounterId: string;
+    rivalCharacterId?: string;
+  } | null;
 }

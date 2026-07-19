@@ -4,7 +4,9 @@
  */
 import type {
   DevEntry,
+  EventKind,
   PlayerBuild,
+  RosterCharacter,
   SaveGame,
   WorldEvent,
   WorldEventChoice,
@@ -33,7 +35,9 @@ type EventFactory = (ctx: {
   player: PlayerBuild;
   rand: () => number;
   pl: number;
-}) => WorldEvent;
+  others: RosterCharacter[];
+  worlds: World[];
+}) => WorldEvent | null;
 
 function rng(seed: number): () => number {
   let s = seed >>> 0 || 1;
@@ -55,19 +59,21 @@ const FACTORIES: EventFactory[] = [
       title: 'Rival at the Gate',
       tag: 'rivalry',
       body: `${rival} lands in ${world.name} with a scanner scream near your band. Crowds want a show. Your current PL is ${formatPL(pl)}. How you answer becomes who you are here.`,
+      kind: 'battle',
       choices: [
         {
           id: 'spar_hard',
           label: 'Accept a hard spar',
-          hint: 'Might DC — Offense/Strength from real pressure',
+          hint: 'Enter battle — Offense/Strength from real pressure',
           attribute: 'might',
-          dc: 12,
+          dc: 11,
           lean: ['offense', 'strength', 'endurance'],
+          startCombat: 'world_duel',
         },
         {
           id: 'outthink',
           label: 'Study their form first',
-          hint: 'Intellect DC — Defense/Force from analysis',
+          hint: 'Intellect DC — Defense/Force; skip the fight',
           attribute: 'intellect',
           dc: 13,
           lean: ['defense', 'force'],
@@ -290,9 +296,211 @@ const FACTORIES: EventFactory[] = [
       },
     ],
   }),
+  // —— Battle-forward events ——
+  ({ world, pl }) => ({
+    id: 'ambush_road',
+    title: 'Ambush on the Line',
+    tag: 'battle',
+    kind: 'battle' as EventKind,
+    body: `Scanners scream at PL ${formatPL(pl)}. Raiders cut the skyrail into ${world.name}. Fight through, slip past, or turn their trap.`,
+    choices: [
+      {
+        id: 'fight_ambush',
+        label: 'Fight through',
+        hint: 'Battle — Strength/Offense under fire',
+        attribute: 'might',
+        dc: 11,
+        lean: ['strength', 'offense', 'endurance'],
+        startCombat: 'world_ambush',
+      },
+      {
+        id: 'slip_past',
+        label: 'Slip the net',
+        hint: 'Agility DC — Speed; avoid combat',
+        attribute: 'agility',
+        dc: 14,
+        lean: ['speed', 'defense'],
+      },
+      {
+        id: 'turn_trap',
+        label: 'Turn their trap',
+        hint: 'Intellect DC then battle — Defense/Force',
+        attribute: 'intellect',
+        dc: 13,
+        lean: ['defense', 'force'],
+        startCombat: 'world_ambush',
+      },
+    ],
+  }),
+  ({ world, pl }) => ({
+    id: 'skirmish_street',
+    title: 'Street Skirmish',
+    tag: 'battle',
+    kind: 'battle' as EventKind,
+    body: `Two crews collide in ${world.name}. Your PL (${formatPL(pl)}) makes you a prize or a problem. Step in or steer clear.`,
+    choices: [
+      {
+        id: 'join_skirmish',
+        label: 'Step into the skirmish',
+        hint: 'Battle vs two foes — Offense/Speed',
+        attribute: 'agility',
+        dc: 12,
+        lean: ['offense', 'speed'],
+        startCombat: 'world_skirmish',
+      },
+      {
+        id: 'protect_crowd',
+        label: 'Shield the crowd',
+        hint: 'Grit DC — Endurance/Resistance; may still fight',
+        attribute: 'grit',
+        dc: 13,
+        lean: ['endurance', 'resistance'],
+        startCombat: 'world_skirmish',
+        convictionTouch: 'duty',
+      },
+      {
+        id: 'leave_street',
+        label: 'Leave them to it',
+        hint: 'Will DC — mild Resistance; no battle',
+        attribute: 'will',
+        dc: 12,
+        lean: ['resistance'],
+      },
+    ],
+  }),
+  ({ world, pl }) => ({
+    id: 'ceiling_hunt',
+    title: 'Something Above the Ceiling',
+    tag: 'battle',
+    kind: 'battle' as EventKind,
+    body: `A hunter above ${world.name}’s soft ceiling (${formatPL(world.powerCeiling)}) sniffs your PL (${formatPL(pl)}). Run, bait it, or meet it clean.`,
+    choices: [
+      {
+        id: 'meet_hunter',
+        label: 'Meet the hunter',
+        hint: 'Hard battle — Offense/Force',
+        attribute: 'might',
+        dc: 12,
+        lean: ['offense', 'force', 'endurance'],
+        startCombat: 'world_hunt',
+      },
+      {
+        id: 'bait_hunter',
+        label: 'Bait it into a trap',
+        hint: 'Control DC then battle — Defense/Speed',
+        attribute: 'control',
+        dc: 14,
+        lean: ['defense', 'speed'],
+        startCombat: 'world_hunt',
+      },
+      {
+        id: 'run_hunter',
+        label: 'Run the district',
+        hint: 'Agility DC — Speed; skip the fight',
+        attribute: 'agility',
+        dc: 14,
+        lean: ['speed'],
+      },
+    ],
+  }),
+  // —— Meet (other roster characters on this world) ——
+  ({ world, others, rand }) => {
+    if (!others.length) return null;
+    const other = pick(rand, others);
+    return {
+      id: 'crossing_paths',
+      title: `Crossing Paths — ${other.build.name}`,
+      tag: 'meet',
+      kind: 'meet' as EventKind,
+      body: `${other.build.name} is also on ${world.name}. Scanners ping. This can be a spar, a lesson, or a quiet alliance.`,
+      choices: [
+        {
+          id: 'roster_spar',
+          label: `Spar ${other.build.name}`,
+          hint: 'Battle your roster mate — real combat',
+          attribute: 'might',
+          dc: 11,
+          lean: ['offense', 'strength', 'speed'],
+          startCombat: 'roster_spar',
+          meetCharacterId: other.id,
+        },
+        {
+          id: 'train_together',
+          label: 'Train together',
+          hint: 'Will DC — shared Endurance/Force gains',
+          attribute: 'will',
+          dc: 12,
+          lean: ['endurance', 'force'],
+          meetCharacterId: other.id,
+          convictionTouch: 'belonging',
+        },
+        {
+          id: 'quiet_talk',
+          label: 'Talk it out',
+          hint: 'Presence DC — Resistance/Defense; no battle',
+          attribute: 'presence',
+          dc: 12,
+          lean: ['resistance', 'defense'],
+          meetCharacterId: other.id,
+          convictionTouch: 'truth',
+        },
+      ],
+    };
+  },
+  // —— Travel hooks ——
+  ({ world, worlds, rand, player }) => {
+    const destinations = worlds.filter((w) => w.id !== world.id);
+    if (!destinations.length) return null;
+    const dest = pick(rand, destinations);
+    return {
+      id: 'travel_call',
+      title: `Road to ${dest.name}`,
+      tag: 'travel',
+      kind: 'travel' as EventKind,
+      body: `${player.name} feels a pull off ${world.name} toward ${dest.name} (${dest.tone}, ceiling ${formatPL(dest.powerCeiling)}). The road itself may fight back.`,
+      choices: [
+        {
+          id: 'travel_safe',
+          label: `Travel quietly to ${dest.name}`,
+          hint: 'Agility DC — Speed; arrive without battle',
+          attribute: 'agility',
+          dc: 12,
+          lean: ['speed'],
+          travelWorldId: dest.id,
+        },
+        {
+          id: 'travel_fight',
+          label: 'Take the hot road',
+          hint: 'Battle on the way, then arrive',
+          attribute: 'might',
+          dc: 11,
+          lean: ['strength', 'endurance'],
+          startCombat: 'world_ambush',
+          travelWorldId: dest.id,
+        },
+        {
+          id: 'stay_put',
+          label: `Stay on ${world.name}`,
+          hint: 'Will DC — Resistance; no travel',
+          attribute: 'will',
+          dc: 11,
+          lean: ['resistance'],
+        },
+      ],
+    };
+  },
 ];
 
-export function rollWorldEvent(save: SaveGame, world: World): WorldEvent {
+/** Factory indices: 0 rival, 7–9 battle, 10 meet, 11 travel */
+const BATTLE_IDX = [0, 7, 8, 9];
+const MEET_IDX = [10];
+const TRAVEL_IDX = [11];
+
+export function rollWorldEvent(
+  save: SaveGame,
+  world: World,
+  prefer: EventKind | 'any' = 'any',
+): WorldEvent {
   const ch = (save.characters ?? []).find((c) => c.id === save.activeCharacterId);
   const train = ch?.trainCount ?? save.trainCount ?? 0;
   const seed =
@@ -300,28 +508,137 @@ export function rollWorldEvent(save: SaveGame, world: World): WorldEvent {
     world.eventCount * 97 +
     world.seed +
     train * 13 +
-    (ch ? ch.id.length * 17 : 0);
+    (ch ? ch.id.length * 17 : 0) +
+    (prefer === 'any' ? 0 : prefer.length * 31);
   const rand = rng(seed);
   const player = ch?.build ?? save.player;
   const pl = playerPower(player, { formId: player.formId ?? 'base' }).powerLevel;
-  // Weight by world focus / tone
-  let pool = [...FACTORIES];
-  if (world.focus === 'stabilize') {
-    pool = [FACTORIES[3], FACTORIES[1], FACTORIES[5], ...pool];
-  } else if (world.focus === 'empower') {
-    pool = [FACTORIES[4], FACTORIES[0], FACTORIES[5], ...pool];
-  } else if (world.focus === 'story') {
-    pool = [FACTORIES[6], FACTORIES[2], FACTORIES[1], ...pool];
+  const others = (save.characters ?? []).filter(
+    (c) => c.id !== ch?.id && c.worldId === world.id,
+  );
+  const worlds = save.worlds ?? [];
+  const ctx = { world, player, rand, pl, others, worlds };
+
+  let indices = FACTORIES.map((_, i) => i);
+  if (prefer === 'battle') indices = [...BATTLE_IDX];
+  else if (prefer === 'meet') indices = others.length ? [...MEET_IDX] : [...BATTLE_IDX];
+  else if (prefer === 'travel') {
+    indices = worlds.length > 1 ? [...TRAVEL_IDX] : [...BATTLE_IDX];
+  } else {
+    if (world.focus === 'empower' || world.tone === 'war') {
+      indices = [...BATTLE_IDX, ...indices];
+    }
+    if (others.length) indices = [...MEET_IDX, ...indices];
+    if (worlds.length > 1) indices = [...TRAVEL_IDX, ...indices];
   }
-  if (world.tone === 'war') pool = [FACTORIES[0], FACTORIES[3], ...pool];
-  if (world.tone === 'ascension') pool = [FACTORIES[4], FACTORIES[0], ...pool];
-  const factory = pick(rand, pool);
-  const event = factory({ world, player, rand, pl });
-  // Frame the event around the stationed character
+
+  let event: WorldEvent | null = null;
+  for (let i = 0; i < 10 && !event; i++) {
+    const idx = pick(rand, indices);
+    event = FACTORIES[idx](ctx);
+  }
+  if (!event) event = FACTORIES[0](ctx)!;
+
   const who = player.name;
   return {
     ...event,
     body: `${who} is on ${world.name}. ${event.body}`,
+  };
+}
+
+/** Build a meet event between the active character and a specific other. */
+export function buildMeetEvent(
+  save: SaveGame,
+  world: World,
+  otherId: string,
+): WorldEvent | null {
+  const other = (save.characters ?? []).find((c) => c.id === otherId);
+  const ch = (save.characters ?? []).find((c) => c.id === save.activeCharacterId);
+  if (!other || !ch) return null;
+  const player = ch.build;
+  return {
+    id: 'crossing_paths',
+    title: `Crossing Paths — ${other.build.name}`,
+    tag: 'meet',
+    kind: 'meet',
+    body: `${player.name} seeks out ${other.build.name} on ${world.name}. Spar, train, or talk — the choice writes both of your stories.`,
+    choices: [
+      {
+        id: 'roster_spar',
+        label: `Spar ${other.build.name}`,
+        hint: 'Enter combat against your roster mate',
+        attribute: 'might',
+        dc: 11,
+        lean: ['offense', 'strength', 'speed'],
+        startCombat: 'roster_spar',
+        meetCharacterId: other.id,
+      },
+      {
+        id: 'train_together',
+        label: 'Train together',
+        hint: 'Will DC — Endurance/Force for you (they remember too)',
+        attribute: 'will',
+        dc: 12,
+        lean: ['endurance', 'force'],
+        meetCharacterId: other.id,
+        convictionTouch: 'belonging',
+      },
+      {
+        id: 'quiet_talk',
+        label: 'Talk it out',
+        hint: 'Presence DC — Resistance/Defense',
+        attribute: 'presence',
+        dc: 12,
+        lean: ['resistance', 'defense'],
+        meetCharacterId: other.id,
+      },
+    ],
+  };
+}
+
+/** Build a travel event toward a destination world. */
+export function buildTravelEvent(
+  save: SaveGame,
+  from: World,
+  dest: World,
+): WorldEvent {
+  const ch = (save.characters ?? []).find((c) => c.id === save.activeCharacterId);
+  const who = ch?.build.name ?? save.player.name;
+  return {
+    id: 'travel_call',
+    title: `Road to ${dest.name}`,
+    tag: 'travel',
+    kind: 'travel',
+    body: `${who} leaves ${from.name} for ${dest.name} (${dest.tone}). Safe roads are rare — the hot road means a fight.`,
+    choices: [
+      {
+        id: 'travel_safe',
+        label: `Travel quietly to ${dest.name}`,
+        hint: 'Agility DC — Speed; arrive without battle',
+        attribute: 'agility',
+        dc: 12,
+        lean: ['speed'],
+        travelWorldId: dest.id,
+      },
+      {
+        id: 'travel_fight',
+        label: 'Take the hot road',
+        hint: 'Battle on the way, then arrive',
+        attribute: 'might',
+        dc: 11,
+        lean: ['strength', 'endurance', 'offense'],
+        startCombat: 'world_ambush',
+        travelWorldId: dest.id,
+      },
+      {
+        id: 'stay_put',
+        label: `Stay on ${from.name}`,
+        hint: 'Will DC — no travel',
+        attribute: 'will',
+        dc: 11,
+        lean: ['resistance'],
+      },
+    ],
   };
 }
 
@@ -331,6 +648,9 @@ export interface EventResolveResult {
   diceText: string;
   toast: string;
   entry: DevEntry;
+  combatId?: string;
+  rivalCharacterId?: string;
+  travelWorldId?: string;
 }
 
 export function resolveEventChoice(
@@ -406,30 +726,90 @@ export function resolveEventChoice(
     gains.push(`lived conviction: ${choice.convictionTouch}`);
   }
 
+  // Travel: move after the check (even on costly success path if travel chosen)
+  let travelWorldId = choice.travelWorldId;
+  if (travelWorldId && choice.id === 'stay_put') travelWorldId = undefined;
+  if (travelWorldId && !success && choice.id === 'travel_safe') {
+    // Failed safe travel — still can go, but bruised (already got scar gains)
+  }
+
+  // Meet: mild mirrored train on the other character
+  if (choice.meetCharacterId && (choice.id === 'train_together' || choice.id === 'quiet_talk')) {
+    const oi = nextSave.characters.findIndex((c) => c.id === choice.meetCharacterId);
+    if (oi >= 0) {
+      const other = nextSave.characters[oi];
+      let ob = structuredClone(other.build);
+      ob.trainedStats = ob.trainedStats ?? {};
+      const mirror = success ? 6 : 2;
+      for (const stat of lean.slice(0, 2)) {
+        ob.trainedStats = trainStat(ob.trainedStats, stat, mirror);
+      }
+      nextSave.characters[oi] = {
+        ...other,
+        build: ob,
+        developmentLog: [
+          {
+            id: `dev_m_${Date.now().toString(36)}`,
+            at: Date.now(),
+            characterId: other.id,
+            characterName: other.build.name,
+            worldId: world.id,
+            worldName: world.name,
+            eventTitle: `Met ${player.name}`,
+            reason: `Shared a ${choice.id === 'train_together' ? 'training' : 'talk'} beat with ${player.name} on ${world.name}`,
+            gains: lean.slice(0, 2).map((s) => `+${mirror} ${s}`),
+          },
+          ...other.developmentLog,
+        ].slice(0, 60),
+      };
+      gains.push(`${other.build.name} also grew`);
+    }
+  }
+
   player.level = 3 + Math.floor(trainCount / 4);
   if (success) player.resolve += strong ? 2 : 1;
 
   const pl = playerPower(player, { formId: player.formId ?? 'base' });
   gains.push(`PL now ${formatPL(pl.powerLevel)}`);
 
+  let nextWorldId = ch?.worldId ?? world.id;
+  if (travelWorldId) {
+    nextWorldId = travelWorldId;
+    const dest = (nextSave.worlds ?? []).find((w) => w.id === travelWorldId);
+    if (dest) gains.push(`traveled → ${dest.name}`);
+  }
+
   const entry: DevEntry = {
     id: `dev_${Date.now().toString(36)}`,
     at: Date.now(),
     characterId: ch?.id,
     characterName: player.name,
-    worldId: world.id,
-    worldName: world.name,
+    worldId: nextWorldId,
+    worldName:
+      (nextSave.worlds ?? []).find((w) => w.id === nextWorldId)?.name ?? world.name,
     eventTitle: event.title,
     reason,
     gains,
   };
 
+  // Combat: queue after event; travel destination applied before fight for ambush flavor
+  const combatId = choice.startCombat;
+  const rivalCharacterId =
+    choice.startCombat === 'roster_spar' ? choice.meetCharacterId : undefined;
+  if (combatId) {
+    nextSave.pendingCombat = { encounterId: combatId, rivalCharacterId };
+    gains.push('battle begins');
+  } else {
+    nextSave.pendingCombat = null;
+  }
+
   nextSave.player = player;
   nextSave.trainCount = trainCount;
   nextSave.currentEvent = null;
+  nextSave.activeWorldId = nextWorldId;
   nextSave.developmentLog = [entry, ...nextSave.developmentLog].slice(0, 80);
   nextSave.log.push(
-    `${player.name} @ ${world.name} — ${event.title}: ${reason} (${gains.join(', ')})`,
+    `${player.name} @ ${entry.worldName} — ${event.title}: ${reason} (${gains.join(', ')})`,
   );
 
   if (chIndex >= 0 && ch) {
@@ -439,14 +819,14 @@ export function resolveEventChoice(
       trainCount,
       flags: charFlags,
       currentEvent: null,
-      worldId: ch.worldId ?? world.id,
+      worldId: nextWorldId,
       developmentLog: [entry, ...ch.developmentLog].slice(0, 60),
     };
   }
 
   worldNext.history = [
     ...worldNext.history,
-    `${player.name}: “${event.title}” → ${choice.label} (${success ? 'held' : 'costly'}).`,
+    `${player.name}: “${event.title}” → ${choice.label} (${success ? 'held' : 'costly'}${combatId ? ', into battle' : ''}).`,
   ].slice(-40);
 
   const diceText = `${roll.narrative} (${roll.total} vs DC ${roll.targetDc})${
@@ -457,8 +837,13 @@ export function resolveEventChoice(
     save: nextSave,
     world: worldNext,
     diceText,
-    toast: `${player.name}: ${reason} → ${gains.slice(0, 3).join(', ')}`,
+    toast: combatId
+      ? `${player.name}: ${reason} — into battle!`
+      : `${player.name}: ${reason} → ${gains.slice(0, 3).join(', ')}`,
     entry,
+    combatId,
+    rivalCharacterId,
+    travelWorldId,
   };
 }
 
@@ -475,6 +860,21 @@ function buildReason(
     spar_hard: success
       ? `${who} took ${event.title} head-on; muscle memory burned under live threat in ${world.name}`
       : `${who} got tagged in the spar — pain taught Endurance anyway`,
+    fight_ambush: `${who} chose the fight on the line — Strength/Offense from surviving an ambush`,
+    slip_past: `${who} slipped the net — Speed/Defense from reading the trap`,
+    turn_trap: `${who} turned the ambush — Defense/Force from flipping the geometry`,
+    join_skirmish: `${who} stepped into a street skirmish — Offense/Speed under crossfire`,
+    protect_crowd: `${who} shielded civilians mid-fight — Endurance/Resistance with purpose`,
+    leave_street: `${who} walked away from the skirmish — Resistance from choosing the long game`,
+    meet_hunter: `${who} met a ceiling hunter head-on — Offense/Force against a harder band`,
+    bait_hunter: `${who} baited the hunter — Defense/Speed from owning the trap`,
+    run_hunter: `${who} ran the district — Speed earned by refusing a bad fight`,
+    roster_spar: `${who} sparred a roster mate — Offense/Strength/Speed from a real clash`,
+    train_together: `${who} trained with another wanderer — Endurance/Force from shared drills`,
+    quiet_talk: `${who} talked a path open — Resistance/Defense from words that held`,
+    travel_safe: `${who} took the quiet road — Speed from traveling light`,
+    travel_fight: `${who} took the hot road — Strength/Endurance from fighting the way there`,
+    stay_put: `${who} stayed put — Resistance from refusing the pull of the road`,
     outthink: `${who} studied the rival’s geometry; Defense rose because pride was refused`,
     talk_down: success
       ? `${who} cooled the crowd — Resistance rose from choosing control over spectacle`
@@ -519,8 +919,20 @@ function applyFocusAndChoice(
     delta.stability += success ? 6 : 2;
     delta.threatLevel += success ? -2 : 3;
   }
-  if (event.tag === 'rivalry' || choice.id === 'spar_hard' || choice.id === 'cash_in') {
+  if (
+    event.tag === 'rivalry' ||
+    event.tag === 'battle' ||
+    choice.id === 'spar_hard' ||
+    choice.id === 'cash_in' ||
+    choice.startCombat
+  ) {
     delta.threatLevel += success ? 4 : 6;
+  }
+  if (event.kind === 'travel' || choice.travelWorldId) {
+    delta.storyProgress += 3;
+  }
+  if (event.kind === 'meet') {
+    delta.storyProgress += success ? 5 : 2;
   }
   if (event.tag === 'story' || choice.id === 'map' || choice.id === 'advance') {
     delta.storyProgress += success ? 12 : 4;
