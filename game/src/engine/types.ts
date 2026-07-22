@@ -136,6 +136,14 @@ export interface Combatant {
   alive: boolean;
   defeatState?: DefeatState;
   aiProfile?: 'aggressive' | 'tactical' | 'protector' | 'volatile';
+  /** Per-fight tempo (−100..100). Landing hits builds it; comebacks spend it. */
+  momentum?: number;
+  /** Hidden Depths unlocked after being driven to the brink. */
+  depthsAwakened?: boolean;
+  /** Fraction of true PL hidden from scanners (0..0.9). */
+  suppression?: number;
+  /** True once a suppressed fighter has dropped the act (or been scanned). */
+  revealed?: boolean;
 }
 
 export interface DiceResult {

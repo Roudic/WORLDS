@@ -246,6 +246,66 @@ export function powerDamageMult(attackerPL: number, defenderPL: number): number 
   return 0.08;
 }
 
+// ---------------------------------------------------------------------------
+// Power Level v2 — depth, tempo, and deception
+//
+// Base PL stays "stat sum × form × output". These layers make fights swingy:
+//   • Hidden Depths — reserve that awakens when a fighter is driven to the brink
+//   • Momentum      — per-fight tempo that lets underdogs surge back
+//   • Suppression   — scanners can lie until a foe drops the act (or you Scan)
+// ---------------------------------------------------------------------------
+
+/** Latent reserve (0.15–0.5). Will + grit + level decide how much is in the tank. */
+export function hiddenDepthFactor(will: number, grit: number, level: number): number {
+  const base = 0.15 + (will + grit) * 0.006 + Math.max(0, level - 1) * 0.012;
+  return Math.min(0.5, Math.max(0.15, base));
+}
+
+/** Momentum → damage swing. −100 ≈ ×0.7, neutral ×1, +100 ≈ ×1.35. */
+export function momentumDamageMult(momentum: number): number {
+  const m = Math.max(-100, Math.min(100, momentum));
+  return 1 + (m / 100) * (m >= 0 ? 0.35 : 0.3);
+}
+
+export type CombatProfileId = 'striker' | 'bulwark' | 'channeler' | 'bruiser' | 'balanced';
+
+/** Archetype from stat spread so equal PLs still feel different. */
+export function combatProfile(stats: BattleStats): { id: CombatProfileId; label: string } {
+  const off = stats.offense + stats.strength + stats.speed;
+  const def = stats.defense + stats.endurance + stats.resistance;
+  const chan = stats.force * 2;
+  const max = Math.max(off, def, chan);
+  if (max <= 0) return { id: 'balanced', label: 'Balanced' };
+  if (chan === max && chan > off && chan > def) return { id: 'channeler', label: 'Channeler' };
+  if (off > def * 1.25) return { id: 'striker', label: 'Striker' };
+  if (def > off * 1.25) return { id: 'bulwark', label: 'Bulwark' };
+  if (off === max && def >= chan) return { id: 'bruiser', label: 'Bruiser' };
+  return { id: 'balanced', label: 'Balanced' };
+}
+
+export interface EffectivePLOpts {
+  momentum?: number;
+  vitalityPct?: number;
+  depthsAwakened?: boolean;
+  hiddenDepth?: number;
+}
+
+/** Power Level currently projected once depth, desperation, and tempo fold in. */
+export function effectivePowerLevel(basePL: number, opts: EffectivePLOpts = {}): number {
+  let pl = basePL;
+  if (opts.depthsAwakened && opts.hiddenDepth) pl *= 1 + opts.hiddenDepth;
+  const vit = opts.vitalityPct ?? 1;
+  if (vit < 0.25) pl *= 1.08;
+  pl *= momentumDamageMult(opts.momentum ?? 0);
+  return Math.max(1, Math.round(pl));
+}
+
+/** What a scouter shows when a fighter is deliberately suppressing (0–0.9). */
+export function suppressedReading(realPL: number, suppression: number): number {
+  const s = Math.min(0.9, Math.max(0, suppression));
+  return Math.max(1, Math.round(realPL * (1 - s)));
+}
+
 export function availableForms(flags: Record<string, unknown>, mastery: number): FormDef[] {
   return Object.values(FORMS).filter((f) => {
     if (!f.unlockFlag && f.id === 'base') return true;

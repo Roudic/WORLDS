@@ -383,6 +383,8 @@ export function buildEncounter(
             position: 5,
             aiProfile: 'aggressive',
             output: 0.88,
+            // Reads soft on the scanner — until they decide to get serious.
+            suppression: 0.4,
           }),
         ],
         objective: { id: 'win', label: 'Win the duel', type: 'defeat_all' },
@@ -439,6 +441,8 @@ export function buildEncounter(
             position: 5,
             aiProfile: 'volatile',
             output: 0.92,
+            // A predator that masks its true strength to lure the overconfident.
+            suppression: 0.55,
           }),
         ],
         objective: { id: 'win', label: 'Survive the hunt', type: 'defeat_all' },

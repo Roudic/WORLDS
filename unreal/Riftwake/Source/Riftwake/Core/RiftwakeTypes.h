@@ -277,6 +277,10 @@ struct FRiftCombatant
 	UPROPERTY(BlueprintReadOnly) ERiftFormId FormId = ERiftFormId::Base;
 	UPROPERTY(BlueprintReadOnly) bool bAlive = true;
 	UPROPERTY(BlueprintReadOnly) int64 CachedPL = 1;
+	UPROPERTY(BlueprintReadOnly) int32 Momentum = 0;
+	UPROPERTY(BlueprintReadOnly) bool bDepthsAwakened = false;
+	UPROPERTY(BlueprintReadOnly) float Suppression = 0.f;
+	UPROPERTY(BlueprintReadOnly) bool bRevealed = false;
 };
 
 USTRUCT(BlueprintType)

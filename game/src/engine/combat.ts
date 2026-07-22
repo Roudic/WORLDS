@@ -9,7 +9,14 @@ import {
 } from './attributes';
 import { damageRoll, isSuccess, makeCheck, modifier } from './dice';
 import { outputLabel, powerGapFlavor } from './resonance';
-import { combatantPower, formatPL, powerDamageMult } from './power';
+import {
+  combatantPower,
+  effectivePowerLevel,
+  formatPL,
+  hiddenDepthFactor,
+  powerDamageMult,
+  suppressedReading,
+} from './power';
 import type {
   AscensionDef,
   Combatant,
@@ -134,6 +141,8 @@ export function makeEnemy(opts: {
   position?: number;
   aiProfile?: Combatant['aiProfile'];
   output?: number;
+  /** Fraction of true Power Level this foe hides from scanners (0..0.9). */
+  suppression?: number;
 }): Combatant {
   const level = opts.level ?? 3;
   const grit = opts.attributes.grit;
@@ -164,6 +173,8 @@ export function makeEnemy(opts: {
     position: opts.position ?? 5,
     alive: true,
     aiProfile: opts.aiProfile ?? 'aggressive',
+    momentum: 0,
+    suppression: opts.suppression,
   };
 }
 
@@ -257,6 +268,67 @@ function applyBandPenalty(
   return { disadvantage: false, damageMult: 1, blocked: false };
 }
 
+function clampMomentum(n: number): number {
+  return Math.max(-100, Math.min(100, Math.round(n)));
+}
+
+/** Power Level a fighter is truly projecting right now (depth + tempo + grit). */
+export function livePower(c: Combatant): number {
+  const base = combatantPower(c).powerLevel;
+  return effectivePowerLevel(base, {
+    momentum: c.momentum ?? 0,
+    vitalityPct: c.vitality / Math.max(1, c.maxVitality),
+    depthsAwakened: c.depthsAwakened,
+    hiddenDepth: hiddenDepthFactor(c.attributes.will, c.attributes.grit, c.level),
+  });
+}
+
+/** Number a scanner shows before a full Scan — deceptive while suppressed. */
+export function displayPower(c: Combatant): number {
+  const real = combatantPower(c).powerLevel;
+  if (c.suppression && !c.revealed) return suppressedReading(real, c.suppression);
+  return real;
+}
+
+function addMomentum(c: Combatant, delta: number) {
+  c.momentum = clampMomentum((c.momentum ?? 0) + delta);
+}
+
+/** First time under ~35% health, latent power ignites. */
+function maybeAwakenDepths(state: CombatState, c: Combatant) {
+  if (c.depthsAwakened || !c.alive) return;
+  if (c.vitality / Math.max(1, c.maxVitality) > 0.35) return;
+  c.depthsAwakened = true;
+  const heal = Math.round(c.maxVitality * 0.12);
+  c.vitality = Math.min(c.maxVitality, c.vitality + heal);
+  c.output = Math.min(1, Math.max(c.output, 0.85));
+  c.pressure += 2;
+  addMomentum(c, 35);
+  c.statuses = Array.from(new Set([...c.statuses, 'aura']));
+  pushLog(
+    state,
+    `HIDDEN DEPTHS — ${c.name} is driven to the brink and the tank cracks open! Power Level surges to ${formatPL(livePower(c))} (+${heal} Health).`,
+    'ascend',
+  );
+}
+
+/** Suppressing fighter drops the act once pressed. */
+function maybeDropTheAct(state: CombatState, c: Combatant) {
+  if (!c.suppression || c.revealed || !c.alive) return;
+  const hurt = c.vitality / Math.max(1, c.maxVitality) < 0.6;
+  if (!hurt && state.round < 3) return;
+  c.revealed = true;
+  c.suppression = 0;
+  c.output = Math.min(1, Math.max(c.output, 0.9));
+  addMomentum(c, 25);
+  c.statuses = Array.from(new Set([...c.statuses, 'aura']));
+  pushLog(
+    state,
+    `${c.name} stops holding back — the scanner spikes to its true reading: ${formatPL(combatantPower(c).powerLevel)}!`,
+    'rift',
+  );
+}
+
 export function useTechnique(
   state: CombatState,
   actorId: string,
@@ -272,6 +344,7 @@ export function useTechnique(
     return next;
   }
   if (!actor.alive || next.finished) return next;
+  maybeDropTheAct(next, actor);
   if (actor.flux < tech.fluxCost) {
     pushLog(next, `${actor.name} is out of Energy for ${tech.name}.`, 'system');
     if (!actor.isPlayer) endTurn(next);
@@ -346,6 +419,8 @@ export function useTechnique(
     pushLog(next, `${actor.name} misses with ${tech.name}. ${roll.narrative}`, 'attack');
     if (roll.riftEvent) pushLog(next, `Rift Die ${roll.riftDie}: ${roll.riftEvent}`, 'rift');
     actor.pressure += 1;
+    addMomentum(actor, -10);
+    addMomentum(target, 6);
     endTurn(next);
     return next;
   }
@@ -371,10 +446,11 @@ export function useTechnique(
   const dmgBonus = modifier(attr) + (actor.ascended ? 3 : 0);
   const dmg = damageRoll(tech.damageDice, tech.damageSides, dmgBonus);
   const outputMult = 0.55 + actor.output * 0.9;
-  const atkPL = combatantPower(actor).powerLevel;
-  const defPL = combatantPower(target).powerLevel;
+  const atkPL = livePower(actor);
+  const defPL = livePower(target);
   const plMult = powerDamageMult(atkPL, defPL);
-  let total = Math.max(1, Math.round(dmg.total * band.damageMult * outputMult * plMult));
+  const momentumSwing = 1 + ((actor.momentum ?? 0) / 100) * 0.2;
+  let total = Math.max(1, Math.round(dmg.total * band.damageMult * outputMult * plMult * momentumSwing));
   if (roll.outcomeTier === 'strongSuccess') total = Math.round(total * 1.25);
   if (roll.outcomeTier === 'exceptionalSuccess') total = Math.round(total * 1.5);
 
@@ -383,6 +459,14 @@ export function useTechnique(
   target.pressure += 1;
   actor.pressure += tech.fluxCost > 0 ? 1 : 0;
   target.statuses = target.statuses.filter((s) => s !== 'exposed');
+
+  const swing = roll.outcomeTier === 'exceptionalSuccess' ? 20 : roll.outcomeTier === 'strongSuccess' ? 15 : 11;
+  const beforeMomentum = actor.momentum ?? 0;
+  addMomentum(actor, swing);
+  addMomentum(target, -Math.round(swing * 0.7));
+  if (beforeMomentum < 80 && (actor.momentum ?? 0) >= 80) {
+    pushLog(next, `${actor.name} seizes the tempo — every strike is landing clean.`, 'system');
+  }
 
   if (tech.conditions?.includes('bound')) {
     target.statuses = Array.from(new Set([...target.statuses, 'bound']));
@@ -396,6 +480,11 @@ export function useTechnique(
   if (roll.riftEvent) {
     pushLog(next, `Rift Die ${roll.riftDie}: ${roll.riftEvent}`, 'rift');
     applyRiftSideEffect(next, roll.riftDie!, actor, target);
+  }
+
+  if (target.vitality > 0) {
+    maybeDropTheAct(next, target);
+    maybeAwakenDepths(next, target);
   }
 
   if (target.stagger >= target.maxStagger) {
@@ -503,6 +592,9 @@ export function scanResonance(
   }
   actor.flux -= 1;
   const reading = combatantPower(target);
+  const wasHiding = !!target.suppression && !target.revealed;
+  const maskedAt = wasHiding ? suppressedReading(reading.powerLevel, target.suppression!) : reading.powerLevel;
+  target.revealed = true;
   next.tags = Array.from(new Set([...next.tags, `scanned:${target.id}`]));
   next.tags.push(`res:${target.id}:${reading.powerLevel}`);
   pushLog(
@@ -510,6 +602,13 @@ export function scanResonance(
     `SCAN → ${target.name}: PL ${formatPL(reading.powerLevel)} · ${reading.formName} ×${reading.formMultiplier} · ${outputLabel(target.output)} (${Math.round(target.output * 100)}%). ${powerGapFlavor(actor.powerBand, target.powerBand)}`,
     'system',
   );
+  if (wasHiding) {
+    pushLog(
+      next,
+      `The scanner was lying — ${target.name} was masking at ${formatPL(maskedAt)}. They are far stronger than they showed.`,
+      'rift',
+    );
+  }
   if (actor.attributes.intellect >= 13) {
     target.statuses = Array.from(new Set([...target.statuses, 'exposed']));
     pushLog(next, 'Precision read exposes a structural weakness.', 'info');
@@ -755,11 +854,28 @@ function endTurn(state: CombatState) {
   const actor = activeCombatant(state);
   if (actor.ascended && actor.ascensionId) {
     const def = ASCENSIONS[actor.ascensionId];
-    actor.flux = Math.max(0, actor.flux - def.fluxUpkeep);
+    // Holding a transform at full tilt burns extra Flux (Form Strain).
+    const strain = def.fluxUpkeep + (actor.output >= 0.9 ? 1 : 0);
+    actor.flux = Math.max(0, actor.flux - strain);
     if (actor.flux === 0) {
-      pushLog(state, `${actor.name}'s Ascension guttered — Flux spent.`, 'system');
+      // Backlash: the form collapses — you can't facetank in max form forever.
+      actor.ascended = false;
+      actor.ascensionId = undefined;
+      actor.output = Math.max(0.4, actor.output - 0.3);
+      actor.stagger = Math.min(actor.maxStagger, actor.stagger + Math.ceil(actor.maxStagger * 0.5));
+      actor.pressure += 3;
+      addMomentum(actor, -20);
+      actor.statuses = actor.statuses.filter((s) => s !== 'aura');
+      pushLog(
+        state,
+        `${actor.name}'s form shatters from Flux burnout — reverting, staggered, and open. Time your transforms.`,
+        'system',
+      );
     }
+  } else if (actor.output >= 0.9 && (actor.momentum ?? 0) < 100) {
+    actor.flux = Math.max(0, actor.flux - 1);
   }
+  if (actor.momentum) actor.momentum = clampMomentum(actor.momentum * 0.85);
   actor.statuses = actor.statuses.filter((s) => s !== 'flanking');
 
   let idx = state.activeIndex;

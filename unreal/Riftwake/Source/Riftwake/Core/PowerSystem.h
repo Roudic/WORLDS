@@ -24,4 +24,13 @@ namespace RiftPower
 	FRiftPowerReading CombatantPower(const FRiftCombatant& C);
 	FString FormatPL(int64 N);
 	float PowerDamageMult(int64 AttackerPL, int64 DefenderPL);
+
+	/** Latent reserve (0.15–0.5). Will + grit + level decide how much is in the tank. */
+	float HiddenDepthFactor(int32 Will, int32 Grit, int32 Level);
+	/** Momentum → damage swing. −100 ≈ ×0.7, neutral ×1, +100 ≈ ×1.35. */
+	float MomentumDamageMult(int32 Momentum);
+	/** Effective PL once depth, desperation, and tempo fold in. */
+	int64 EffectivePowerLevel(int64 BasePL, int32 Momentum, float VitalityPct, bool bDepthsAwakened, float HiddenDepth);
+	/** What a scouter shows when a fighter is deliberately suppressing (0–0.9). */
+	int64 SuppressedReading(int64 RealPL, float Suppression);
 }

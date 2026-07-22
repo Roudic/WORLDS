@@ -43,6 +43,7 @@ Production build is published from `game/` (Vite → `dist`).
 
 - **3D WebGL arena** (Three.js): title cityscape, combat stage, auras, clash beams
 - **BYOND-style Power Level:** Strength/Endurance/Speed/Resistance/Offense/Defense/Force → one PL, then **form multipliers** (×1 / ×2.5 / ×4 / ×8 / ×15)
+- **Power Level v2 twists:** Hidden Depths, Momentum/Tempo, Suppression (scanner lies), Form Strain backlash, combat profiles — see [`docs/power-level-v2.md`](docs/power-level-v2.md)
 - **Story AI director:** procedural grind — train stats (dice), spar, missions, transform drills, rival calls
 - Character creation + authored Crossfall Trials saga (still dice-driven)
 - Turn-based combat scaled by Power Level gaps
@@ -51,6 +52,7 @@ Production build is published from `game/` (Vite → `dist`).
 ## Design docs
 
 - [Game Foundation v0.1](docs/project-riftwake-game-foundation.md)
+- [Power Level v2 — Twists](docs/power-level-v2.md)
 - [Visual Style Guide](docs/visual-style-guide.md)
 - Concept plates in [`docs/visual-refs/`](docs/visual-refs/) (also in-game under **Visual Refs**)
 

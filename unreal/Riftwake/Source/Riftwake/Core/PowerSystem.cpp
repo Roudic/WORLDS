@@ -153,4 +153,31 @@ namespace RiftPower
 		if (Ratio >= 0.25) return 0.25f;
 		return 0.08f;
 	}
+
+	float HiddenDepthFactor(int32 Will, int32 Grit, int32 Level)
+	{
+		const float Base = 0.15f + (Will + Grit) * 0.006f + FMath::Max(0, Level - 1) * 0.012f;
+		return FMath::Clamp(Base, 0.15f, 0.5f);
+	}
+
+	float MomentumDamageMult(int32 Momentum)
+	{
+		const float M = FMath::Clamp(static_cast<float>(Momentum), -100.f, 100.f);
+		return 1.f + (M / 100.f) * (M >= 0.f ? 0.35f : 0.3f);
+	}
+
+	int64 EffectivePowerLevel(int64 BasePL, int32 Momentum, float VitalityPct, bool bDepthsAwakened, float HiddenDepth)
+	{
+		double PL = static_cast<double>(BasePL);
+		if (bDepthsAwakened && HiddenDepth > 0.f) PL *= (1.0 + HiddenDepth);
+		if (VitalityPct < 0.25f) PL *= 1.08;
+		PL *= MomentumDamageMult(Momentum);
+		return FMath::Max<int64>(1, FMath::RoundToInt64(PL));
+	}
+
+	int64 SuppressedReading(int64 RealPL, float Suppression)
+	{
+		const float S = FMath::Clamp(Suppression, 0.f, 0.9f);
+		return FMath::Max<int64>(1, FMath::RoundToInt64(RealPL * (1.f - S)));
+	}
 }

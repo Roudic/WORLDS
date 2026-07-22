@@ -984,6 +984,66 @@ button:disabled {
   background: linear-gradient(90deg, #f0a35e, #ffe29a);
 }
 
+.bar.momentum {
+  position: relative;
+}
+.bar.momentum > i {
+  background: linear-gradient(90deg, #6b7cff, #b58bff);
+}
+.bar.momentum.hot > i {
+  background: linear-gradient(90deg, #ffb14e, #ff5e7a);
+  box-shadow: 0 0 12px rgba(255, 94, 122, 0.55);
+}
+.bar.momentum.cold > i {
+  background: linear-gradient(90deg, #3a4a7a, #55627f);
+}
+
+.res-readout.deceiving .res-num {
+  color: #ffd27a;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.15rem 0 0.35rem;
+}
+.chip {
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.chip.form {
+  border-color: rgba(255, 226, 154, 0.5);
+  color: #ffe29a;
+}
+.chip.serious {
+  border-color: rgba(255, 94, 122, 0.6);
+  color: #ff8ea1;
+  box-shadow: 0 0 12px rgba(255, 94, 122, 0.35);
+  animation: pulseChip 1.1s ease-in-out infinite;
+}
+.chip.revealed {
+  border-color: rgba(199, 183, 255, 0.6);
+  color: #c7b7ff;
+}
+.chip.tempo {
+  border-color: rgba(181, 139, 255, 0.6);
+  color: #d3bcff;
+}
+.chip.masked-chip {
+  border-style: dashed;
+  opacity: 0.75;
+}
+@keyframes pulseChip {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 .bar.attr {
   margin-top: 0.4rem;
   height: 6px;

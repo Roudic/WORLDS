@@ -1,6 +1,6 @@
 import { TECHNIQUES } from '../data/catalog';
 import { artForScene, VISUAL_REFS } from '../data/visuals';
-import { activeCombatant } from '../engine/combat';
+import { activeCombatant, displayPower, livePower } from '../engine/combat';
 import {
   attributeBars,
   bandTrack,
@@ -11,6 +11,7 @@ import {
 import {
   FORMS,
   STAT_LABELS,
+  combatProfile,
   combatantPower,
   formatPL,
   playerPower,
@@ -815,26 +816,42 @@ function renderCombat(state: AppState): string {
       const st = Math.round((c.stagger / Math.max(1, c.maxStagger)) * 100);
       const scanned = combat.tags.includes(`scanned:${c.id}`) || c.isPlayer || c.isCompanion;
       const res = combatantPower(c);
+      const profile = combatProfile(res.stats);
+      const shownPL = scanned ? livePower(c) : displayPower(c);
+      const deceiving = !scanned && !!c.suppression && !c.revealed;
       const aura = c.ascended || c.output >= 0.9 || c.statuses.includes('aura') ? ' aura' : '';
       const surge = c.output >= 0.85 ? ' surge' : '';
+      const mo = Math.max(-100, Math.min(100, c.momentum ?? 0));
+      const moPct = Math.round(((mo + 100) / 200) * 100);
+      const moClass = mo >= 55 ? 'hot' : mo <= -55 ? 'cold' : '';
+      const chips = [
+        c.ascended ? `<span class="chip form">${escapeHtml(res.formName)}</span>` : '',
+        c.depthsAwakened ? '<span class="chip serious">HIDDEN DEPTHS</span>' : '',
+        c.revealed ? '<span class="chip revealed">TRUE POWER</span>' : '',
+        deceiving ? '<span class="chip masked-chip">reading soft…</span>' : '',
+        mo >= 80 ? '<span class="chip tempo">TEMPO</span>' : '',
+      ]
+        .filter(Boolean)
+        .join('');
       return `<div class="combatant${aura}${surge} ${c.id === active.id ? 'active' : ''} ${c.alive ? '' : 'down'}">
-        <div class="name"><span>${escapeHtml(c.name)}${c.ascended ? ` · ${escapeHtml(res.formName)}` : ''}</span><span class="band-chip">${escapeHtml(res.bandLabel)}</span></div>
-        <div class="res-readout ${scanned ? 'known' : 'masked'}">
+        <div class="name"><span>${escapeHtml(c.name)}</span><span class="band-chip">${escapeHtml(res.bandLabel)} · ${escapeHtml(profile.label)}</span></div>
+        <div class="res-readout ${scanned ? 'known' : deceiving ? 'deceiving' : 'masked'}">
           <span class="res-label">PL</span>
-          <strong class="res-num">${scanned ? formatPL(res.powerLevel) : '????'}</strong>
-          <span class="muted">${scanned ? `×${res.formMultiplier} · ${outputLabel(c.output)} ${Math.round(c.output * 100)}%` : 'not scanned'}</span>
+          <strong class="res-num">${scanned ? formatPL(shownPL) : deceiving ? `~${formatPL(shownPL)}` : '????'}</strong>
+          <span class="muted">${scanned ? `${outputLabel(c.output)} ${Math.round(c.output * 100)}%` : deceiving ? 'unscanned · may be masking' : 'not scanned'}</span>
         </div>
+        ${chips ? `<div class="chip-row">${chips}</div>` : ''}
         <div class="bars">
           <div class="bar hp"><i style="width:${hp}%"></i></div>
           <div class="bar flux"><i style="width:${flux}%"></i></div>
           <div class="bar stagger"><i style="width:${st}%"></i></div>
-          <div class="bar output"><i style="width:${Math.round(c.output * 100)}%"></i></div>
+          <div class="bar momentum ${moClass}"><i style="width:${moPct}%"></i></div>
         </div>
         <div class="statline">
           <span>Health ${c.vitality}/${c.maxVitality}</span>
           <span>Energy ${c.flux}/${c.maxFlux}</span>
           <span>Stun ${c.stagger}/${c.maxStagger}</span>
-          <span>Stress ${c.pressure}</span>
+          <span>Tempo ${mo > 0 ? '+' : ''}${mo}</span>
           <span>Defense ${c.guard}</span>
         </div>
       </div>`;
@@ -1127,8 +1144,9 @@ function renderSheet(state: AppState): string {
   );
 }
 
-function escapeHtml(s: string): string {
-  return s
+function escapeHtml(s: string | number | null | undefined): string {
+  if (s === null || s === undefined) return '';
+  return String(s)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
