@@ -39,6 +39,7 @@ You should see a procedural sunset arena (engine spheres) and an on-screen Riftw
 | System | Location |
 |--------|----------|
 | Power Level + forms (×1 / ×2.5 / ×4 / ×8 / ×15) | `Source/Riftwake/Core/PowerSystem.*` |
+| PL v2: Hidden Depths, Momentum, Suppression | `Core/PowerSystem.*` + combatant fields |
 | Dice checks | `Core/DiceSystem.*` |
 | Turn combat (strike, rush, bolt, ascend) | `Core/CombatSystem.*` |
 | World forge / ceiling / focus | `Core/WorldSystem.*` |
