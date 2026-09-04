@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S. — Orb Dashboard</title>
+<link rel="stylesheet" href="assets/css/jarvis.css">
+</head>
+<body>
+<div id="boot" class="boot">
+  <div class="boot-inner">
+    <div class="boot-ring"></div>
+    <div class="boot-title">J.A.R.V.I.S.</div>
+    <div class="boot-sub" id="boot-sub">initializing subsystems</div>
+    <div class="boot-bar"><i id="boot-fill"></i></div>
+  </div>
+</div>
+
+<main class="hud" id="hud" aria-hidden="true">
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="scanline" aria-hidden="true"></div>
+
+  <header class="bar bar-top">
+    <div class="brand">
+      <span class="dot" id="status-dot"></span>
+      <span class="brand-name">J.A.R.V.I.S.</span>
+      <span class="brand-tag">just a rather very intelligent system</span>
+    </div>
+    <div class="bar-right">
+      <span class="chip" id="chip-mode">STANDBY</span>
+      <span class="chip mono" id="chip-clock">--:--:--</span>
+    </div>
+  </header>
+
+  <section class="stage">
+    <aside class="panel panel-left">
+      <h2 class="panel-title">Telemetry</h2>
+      <div class="orbs" id="orbs"></div>
+    </aside>
+
+    <div class="core">
+      <div class="core-stage">
+        <canvas id="core-canvas" aria-label="Assistant core orb"></canvas>
+      </div>
+      <div class="core-caption">
+        <div class="core-state" id="core-state">standby</div>
+        <div class="core-hint" id="core-hint">say &ldquo;jarvis&rdquo; or press <kbd>Space</kbd></div>
+      </div>
+      <div class="core-actions">
+        <button class="btn btn-primary" id="btn-listen" type="button">Listen</button>
+        <button class="btn" id="btn-mic" type="button">Enable Mic</button>
+        <button class="btn" id="btn-mute" type="button" aria-pressed="false">Voice: On</button>
+      </div>
+    </div>
+
+    <aside class="panel panel-right">
+      <h2 class="panel-title">Transcript</h2>
+      <div class="log" id="log" role="log" aria-live="polite"></div>
+      <form class="composer" id="composer" autocomplete="off">
+        <input id="input" type="text" placeholder="type a command…" aria-label="Command input">
+        <button class="btn btn-send" type="submit">Send</button>
+      </form>
+    </aside>
+  </section>
+
+  <footer class="bar bar-bottom">
+    <div class="ticker" id="ticker"><span>system nominal</span></div>
+    <div class="bar-right mono" id="chip-fps">-- fps</div>
+  </footer>
+</main>
+
+<script src="assets/js/util.js"></script>
+<script src="assets/js/audio.js"></script>
+<script src="assets/js/orb.js"></script>
+<script src="assets/js/telemetry.js"></script>
+<script src="assets/js/voice.js"></script>
+<script src="assets/js/commands.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
