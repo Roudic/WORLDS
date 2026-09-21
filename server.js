@@ -10,39 +10,19 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { loadDotEnv } = require('./config');
+const { route } = require('./router');
+const { TIERS } = require('./router/tiers');
+
 const API_URL = 'https://api.typesafe.ai/v1/systemone';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // --- config -----------------------------------------------------------------
 
-// Minimal .env loader so `node server.js` works with no flags and no deps.
-function loadDotEnv(file) {
-  let raw;
-  try {
-    raw = fs.readFileSync(file, 'utf8');
-  } catch {
-    return; // no .env is fine — the var may already be exported
-  }
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (key && !(key in process.env)) process.env[key] = value;
-  }
-}
-
 loadDotEnv(path.join(__dirname, '.env'));
 
 const API_KEY = process.env.TYPESAFE_API_KEY || '';
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 const DEFAULT_MODEL = process.env.TYPESAFE_MODEL || 'jev-latest';
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -212,7 +192,59 @@ const server = http.createServer(async (req, res) => {
   const { pathname } = new URL(req.url, 'http://localhost');
 
   if (pathname === '/api/health') {
-    sendJson(res, 200, { keyConfigured: Boolean(API_KEY), defaultModel: DEFAULT_MODEL });
+    sendJson(res, 200, {
+      keyConfigured: Boolean(API_KEY),
+      anthropicConfigured: Boolean(ANTHROPIC_KEY),
+      defaultModel: DEFAULT_MODEL,
+      tiers: TIERS.map((t) => ({
+        key: t.key, name: t.name, model: t.model,
+        inputPerMTok: t.inputPerMTok, outputPerMTok: t.outputPerMTok,
+        contextWindow: t.contextWindow, blurb: t.blurb,
+      })),
+    });
+    return;
+  }
+
+  if (pathname === '/api/route') {
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { error: 'Use POST' });
+      return;
+    }
+    if (!API_KEY) {
+      sendJson(res, 500, { error: 'TYPESAFE_API_KEY is not set — the router cannot classify without it.' });
+      return;
+    }
+
+    let request;
+    try {
+      request = JSON.parse(await readBody(req));
+    } catch (err) {
+      sendJson(res, err.status || 400, { error: err.message || 'Invalid JSON body' });
+      return;
+    }
+
+    const dryRun = Boolean(request.dryRun);
+    if (!ANTHROPIC_KEY && !dryRun) {
+      sendJson(res, 500, {
+        error: 'ANTHROPIC_API_KEY is not set. Add it to .env, or use dry run to route without executing.',
+      });
+      return;
+    }
+
+    try {
+      const result = await route({
+        prompt: request.prompt,
+        systemPrompt: request.systemPrompt,
+        typesafeKey: API_KEY,
+        anthropicKey: ANTHROPIC_KEY,
+        thresholds: request.thresholds,
+        forceTier: request.forceTier || null,
+        dryRun,
+      });
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, err.status || 500, { error: err.message });
+    }
     return;
   }
 
@@ -275,9 +307,6 @@ server.listen(PORT, () => {
   console.log(`\n  WORLDS — Jev playground`);
   console.log(`  http://localhost:${PORT}`);
   console.log(`  model: ${DEFAULT_MODEL}`);
-  console.log(
-    API_KEY
-      ? `  api key: loaded (${API_KEY.slice(0, 3)}…${API_KEY.slice(-2)})\n`
-      : `  api key: MISSING — copy .env.example to .env and add TYPESAFE_API_KEY\n`
-  );
+  console.log(`  typesafe key: ${API_KEY ? 'loaded' : 'MISSING'}`);
+  console.log(`  anthropic key: ${ANTHROPIC_KEY ? 'loaded' : 'MISSING (router can still dry-run)'}\n`);
 });

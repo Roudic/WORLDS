@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WORLDS Router</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128756;</text></svg>" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="router.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="globe">&#128756;</span>
+      <div>
+        <h1>WORLDS Router</h1>
+        <p class="tagline">Jev picks the cheapest Claude that can handle it</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <a class="ghost-btn" href="/">Playground</a>
+      <span id="key-status" class="pill pill-muted">checking&hellip;</span>
+      <button id="theme-toggle" class="icon-btn" type="button" title="Toggle theme">&#9788;</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Request</h2>
+        <div class="panel-actions">
+          <label class="sr-only" for="sample-picker">Load a sample</label>
+          <select id="sample-picker"><option value="">Try a sample&hellip;</option></select>
+        </div>
+      </div>
+      <textarea id="prompt" rows="5" spellcheck="false"
+        placeholder="Type the request you'd normally send straight to a model&hellip;"></textarea>
+
+      <div class="controls">
+        <label class="ctl">
+          <input type="checkbox" id="dry-run" />
+          <span>Dry run <span class="hint-inline">classify &amp; decide, don&rsquo;t spend</span></span>
+        </label>
+        <label class="ctl">
+          <span>Pin tier</span>
+          <select id="force-tier">
+            <option value="">auto (router decides)</option>
+            <option value="haiku">haiku</option>
+            <option value="sonnet">sonnet</option>
+            <option value="opus">opus</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="run-row">
+        <button id="run-btn" class="run-btn" type="button">Route it</button>
+        <span id="run-note" class="hint"></span>
+      </div>
+    </section>
+
+    <div id="error" class="error-box" hidden></div>
+
+    <section id="decision-panel" class="panel" hidden>
+      <div class="panel-head"><h2>Decision</h2><span id="decision-meta" class="pill pill-muted"></span></div>
+      <div id="tier-track" class="tier-track"></div>
+      <ul id="reasons" class="reasons"></ul>
+    </section>
+
+    <section id="signals-panel" class="panel" hidden>
+      <div class="panel-head"><h2>Signals from Jev</h2><span id="signals-meta" class="pill pill-muted"></span></div>
+      <div id="signals"></div>
+    </section>
+
+    <section id="response-panel" class="panel" hidden>
+      <div class="panel-head"><h2>Response</h2><span id="response-meta" class="pill pill-muted"></span></div>
+      <pre id="response-text" class="response-text"></pre>
+    </section>
+
+    <section id="cost-panel" class="panel" hidden>
+      <div class="panel-head"><h2>Cost</h2></div>
+      <div id="cost"></div>
+    </section>
+
+    <section id="ledger-panel" class="panel" hidden>
+      <div class="panel-head">
+        <h2>Session ledger</h2>
+        <button id="clear-ledger" class="ghost-btn" type="button">Reset</button>
+      </div>
+      <div id="ledger-summary" class="ledger-summary"></div>
+      <table class="ledger"><tbody id="ledger-rows"></tbody></table>
+    </section>
+  </main>
+
+  <footer>
+    <span>Keys stay server-side. Routing policy lives in <code>router/policy.js</code>.</span>
+    <a href="https://docs.typesafe.ai/patterns/intent-routing.md" target="_blank" rel="noopener">Pattern docs</a>
+  </footer>
+
+  <script src="router.js"></script>
+</body>
+</html>

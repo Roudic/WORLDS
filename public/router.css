@@ -1,0 +1,89 @@
+.controls { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; margin-top: 11px; }
+.ctl { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-dim); }
+.ctl select { font-size: 13px; padding: 5px 8px; }
+.hint-inline { font-size: 12px; opacity: 0.75; }
+
+/* ---------- tier track ---------- */
+
+.tier-track { display: flex; gap: 10px; margin: 6px 0 14px; flex-wrap: wrap; }
+.tier {
+  flex: 1 1 180px; border: 1px solid var(--border); border-radius: 9px;
+  padding: 11px 13px; background: var(--surface-2); opacity: 0.5; position: relative;
+}
+.tier.chosen {
+  opacity: 1; border-color: var(--tier-color); border-width: 2px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tier-color) 16%, transparent);
+}
+.tier[data-key="haiku"]  { --tier-color: var(--noul); }
+.tier[data-key="sonnet"] { --tier-color: var(--choice); }
+.tier[data-key="opus"]   { --tier-color: var(--score); }
+.tier-name { font-weight: 700; font-size: 14px; color: var(--tier-color); }
+.tier-model { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+.tier-price { font-size: 12px; color: var(--text-dim); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.tier-flag {
+  position: absolute; top: -9px; right: 10px; font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; background: var(--tier-color);
+  color: var(--surface); padding: 2px 7px; border-radius: 999px;
+}
+
+.reasons { list-style: none; margin: 0; padding: 0; }
+.reasons li {
+  display: flex; gap: 9px; align-items: baseline; padding: 6px 0;
+  border-top: 1px solid var(--border); font-size: 13.5px;
+}
+.reasons li:first-child { border-top: none; }
+.rule-tag {
+  flex: 0 0 auto; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+  background: var(--accent-soft); color: var(--accent); padding: 2px 7px; border-radius: 4px;
+}
+.rule-tag.escalate { background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- signals ---------- */
+
+.signal { margin-bottom: 11px; }
+.signal-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; gap: 10px; }
+.signal-name { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+.signal-value { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.signal .bar-track { height: 13px; }
+
+/* ---------- response ---------- */
+
+.response-text {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px; white-space: pre-wrap; word-wrap: break-word; margin: 0;
+  font: 14px/1.6 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; max-height: 460px; overflow-y: auto;
+}
+
+/* ---------- cost ---------- */
+
+.cost-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+.cost-cell {
+  flex: 1 1 150px; border: 1px solid var(--border); border-radius: 9px;
+  padding: 12px 14px; background: var(--surface-2);
+}
+.cost-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+.cost-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 3px; }
+.cost-cell.saved .cost-value { color: var(--noul); }
+.cost-note { font-size: 12.5px; color: var(--text-dim); margin-top: 10px; }
+
+/* ---------- ledger ---------- */
+
+.ledger-summary { font-size: 13.5px; color: var(--text-dim); margin-bottom: 10px; }
+.ledger-summary strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.ledger { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ledger td { padding: 7px 6px; border-top: 1px solid var(--border); vertical-align: top; }
+.ledger td:first-child { width: 72px; }
+.ledger td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-dim); }
+.ledger-prompt { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; }
+.tier-chip {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--tier-color); color: var(--tier-color);
+}
+.tier-chip[data-key="haiku"]  { --tier-color: var(--noul); }
+.tier-chip[data-key="sonnet"] { --tier-color: var(--choice); }
+.tier-chip[data-key="opus"]   { --tier-color: var(--score); }
+
+@media (max-width: 620px) {
+  .tier { flex-basis: 100%; }
+  .ledger td:nth-child(2) { max-width: 120px; }
+}
