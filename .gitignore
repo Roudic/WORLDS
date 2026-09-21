@@ -1,0 +1,12 @@
+# Secrets — never commit real keys
+.env
+.env.local
+*.key
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+*.swp
